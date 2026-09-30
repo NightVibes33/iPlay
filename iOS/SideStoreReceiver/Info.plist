@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>iPlay</string>
+  <key>CFBundleIdentifier</key><string>com.nightvibes33.iplay</string>
+  <key>CFBundleName</key><string>iPlay</string>
+  <key>CFBundleDisplayName</key><string>iPlay</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+  <key>UIRequiresFullScreen</key><true/>
+  <key>UIStatusBarHidden</key><true/>
+  <key>UIViewControllerBasedStatusBarAppearance</key><true/>
+  <key>UIInterfaceOrientation</key><string>UIInterfaceOrientationLandscapeLeft</string>
+  <key>UISupportedInterfaceOrientations</key>
+  <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+  <key>NSLocalNetworkUsageDescription</key><string>iPlay receives wireless CarPlay over the local network.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>iPlay uses Bluetooth to bootstrap wireless CarPlay head-unit sessions.</string>
+  <key>NSBonjourServices</key>
+  <array><string>_airplay._tcp</string><string>_raop._tcp</string></array>
+  <key>UIBackgroundModes</key><array><string>audio</string></array>
+  <key>LSApplicationQueriesSchemes</key><array><string>prefs</string><string>App-Prefs</string><string>sidestore</string></array>
+</dict>
+</plist>
