@@ -18,6 +18,7 @@ static void *gAirPlaySenderHandle = NULL;
 static void *gAPTransportHandle = NULL;
 static id gAPSharedSessionHandler = nil;
 static IMP gAPOriginalAddCarPlayHelper = NULL;
+static IMP gAPOriginalRegisterMachService = NULL;
 
 static BOOL iPlayLoadFramework(NSString *path) {
     return dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL) != NULL;
@@ -42,6 +43,18 @@ static void iPlayCaptureAddCarPlayHelper(id self, SEL _cmd, id helper) {
     }
 }
 
+
+static void iPlaySuppressSessionRequestMachService(id self, SEL _cmd) {
+    (void)self;
+    (void)_cmd;
+    /*
+     * The direct SideStore A->A path calls the shared handler in-process.
+     * Registering Apple's global carkitd Mach service from this app is both
+     * unnecessary and potentially rejected/colliding, so intentionally no-op.
+     */
+    NSLog(@"[iPlay:A->A] Suppressed APTransport carkitd Mach-service registration");
+}
+
 static BOOL iPlayInstallAPSessionHandlerCapture(void) {
     Class cls = NSClassFromString(@"APCarSessionRequestHandler");
     if (!cls) return NO;
@@ -56,6 +69,19 @@ static BOOL iPlayInstallAPSessionHandlerCapture(void) {
         gAPOriginalAddCarPlayHelper = current;
         method_setImplementation(method, capture);
     }
+
+    SEL registerSel =
+        NSSelectorFromString(@"registerSessionRequestHandlerMachService");
+    Method registerMethod = class_getInstanceMethod(cls, registerSel);
+    if (registerMethod) {
+        IMP suppress = (IMP)iPlaySuppressSessionRequestMachService;
+        IMP registerCurrent = method_getImplementation(registerMethod);
+        if (registerCurrent != suppress) {
+            gAPOriginalRegisterMachService = registerCurrent;
+            method_setImplementation(registerMethod, suppress);
+        }
+    }
+
     return YES;
 }
 
