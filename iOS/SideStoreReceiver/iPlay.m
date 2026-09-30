@@ -4301,28 +4301,12 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             [self exportDiagnostics];
         }]];
 
-    if (!self.diagnosticsEnabled) {
-        UIAlertAction *dump = [UIAlertAction actionWithTitle:@"Send Network Dump"
-            style:UIAlertActionStyleDefault handler:nil];
-        dump.enabled = NO;
-        [ac addAction:dump];
-    } else if (!tcpdump_tool_path()) {
-        [ac addAction:[UIAlertAction actionWithTitle:@"Network Dump Unavailable"
-            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-                self.tcpdumpMissingPromptShown = NO;
-                [self promptInstallTcpdumpIfNeeded];
-            }]];
-    } else {
-        NSString *title = (self.tcpdumpPid > 0 && pid_alive(self.tcpdumpPid))
-            ? @"Stop & Send Network Dump"
-            : (([self latestNetworkDumpPath] != nil)
-                ? @"Send Network Dump" : @"Start Network Dump");
-        UIAlertAction *dump = [UIAlertAction actionWithTitle:title
-            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-                [self handleNetworkDumpAction];
-            }];
-        [ac addAction:dump];
-    }
+    /* Stock SideStore target intentionally has no packet-capture/package-manager
+     * path. Keep support logs available without exposing dead jailbreak actions. */
+    UIAlertAction *dump = [UIAlertAction actionWithTitle:@"Network Capture Not Used"
+        style:UIAlertActionStyleDefault handler:nil];
+    dump.enabled = NO;
+    [ac addAction:dump];
 
     [ac addAction:[UIAlertAction actionWithTitle:@"Clear Logs"
         style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a) {
