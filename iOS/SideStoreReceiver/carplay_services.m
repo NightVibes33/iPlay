@@ -48,6 +48,7 @@
  */
 static pthread_mutex_t g_service_log_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool g_service_log_at_line_start = true;
+static FILE *g_service_log_file = NULL;
 
 int showcase_service_log_printf(const char *format, ...) {
     va_list args;
@@ -70,6 +71,10 @@ int showcase_service_log_printf(const char *format, ...) {
     va_end(args);
 
     pthread_mutex_lock(&g_service_log_lock);
+    if (!g_service_log_file) {
+        g_service_log_file = fopen("/tmp/iplay-service.log", "a");
+        if (g_service_log_file) setvbuf(g_service_log_file, NULL, _IOLBF, 0);
+    }
     const char *cursor = rendered;
     const char *end = rendered + length;
     while (cursor < end) {
@@ -79,12 +84,18 @@ int showcase_service_log_printf(const char *format, ...) {
             fprintf(stdout, "[%lld.%06lld] ",
                     (long long)now.tv_sec,
                     (long long)(now.tv_nsec / 1000));
+            if (g_service_log_file) {
+                fprintf(g_service_log_file, "[%lld.%06lld] ",
+                        (long long)now.tv_sec,
+                        (long long)(now.tv_nsec / 1000));
+            }
             g_service_log_at_line_start = false;
         }
         const char *newline = memchr(cursor, '\n', (size_t)(end - cursor));
         size_t chunk = newline ? (size_t)(newline - cursor + 1)
                                : (size_t)(end - cursor);
         fwrite(cursor, 1, chunk, stdout);
+        if (g_service_log_file) fwrite(cursor, 1, chunk, g_service_log_file);
         cursor += chunk;
         if (newline) g_service_log_at_line_start = true;
     }
