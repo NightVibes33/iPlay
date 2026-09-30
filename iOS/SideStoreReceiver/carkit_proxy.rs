@@ -305,7 +305,7 @@ async fn open_carkit(
             .get_socket()
             .ok_or_else(|| "CarKit RSD shim did not expose a socket".to_string())?;
 
-        return Ok((adapter, handshake, socket));
+        return return Ok((adapter, handshake, socket));;
     }
 
     Err(format!(
