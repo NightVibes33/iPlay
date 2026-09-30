@@ -3038,7 +3038,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)attemptStart {
     /* Jailbreak mode still needs the receiver hotspot. SideStore modes do not. */
     if (geteuid() == 0 && ![self.cars apReady]) { [self showWifiSetup]; return; }
-    if (self.cars.cars.count == 0) return;
+    /* A SideStore A->A receiver is this app itself; it must not require a
+     * legacy saved vehicle entry before the local source stack can start. */
+    if (geteuid() == 0 && self.cars.cars.count == 0) return;
     if (!self.baaReady) {
         [self preheatBAA];
         return;
@@ -3047,9 +3049,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)startFlow {
+    NSString *flowName = self.cars.selected.name ?: @"iPlay";
+    NSString *flowSSID = self.cars.apSSID ?: @"";
     ip_log("startFlow: car='%s' ssid='%s'",
-           [self.cars.selected.name UTF8String],
-           [self.cars.apSSID UTF8String]);
+           flowName.UTF8String,
+           flowSSID.UTF8String);
     self.bluetoothHandedOff = NO;
     if (geteuid() != 0) {
         [self transitionTo:StatePreparingBT];
@@ -3114,8 +3118,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *btPath = [bundlePath stringByAppendingPathComponent:@BT_HELPER_NAME];
     Car *sel = self.cars.selected;
+    NSString *receiverName = sel.name ?: @"iPlay";
+    NSString *receiverSSID = self.cars.apSSID ?: @"";
     ip_log("bgPrepareBT: euid=%u, name='%s' ssid='%s'",
-           geteuid(), [sel.name UTF8String], [self.cars.apSSID UTF8String]);
+           geteuid(), receiverName.UTF8String, receiverSSID.UTF8String);
     self.bluetoothRetryAttempted = NO;
 
     if (geteuid() != 0) {
@@ -3225,7 +3231,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
     /* 3. Spawn carplay_bt with car name + global AP creds */
     char nameBuf[64], ssidBuf[128], passBuf[128];
-    snprintf(nameBuf, sizeof(nameBuf), "%s", [sel.name UTF8String]);
+    snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
     snprintf(ssidBuf, sizeof(ssidBuf), "%s", [self.cars.apSSID UTF8String]);
     snprintf(passBuf, sizeof(passBuf), "%s", [self.cars.apPassword UTF8String]);
     char *btArgv[] = {
@@ -3288,7 +3294,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *svcPath = [bundlePath stringByAppendingPathComponent:@SVC_HELPER_NAME];
     Car *sel = self.cars.selected;
-    ip_log("bgPrepareNet");
+    NSString *receiverName = sel.name ?: @"iPlay";
+    ip_log("bgPrepareNet: receiver='%s' mode=%ld",
+           receiverName.UTF8String, (long)self.sideStoreMode);
 
     if (![self startIPCListener]) { [self failWith:@"IPC listener failed"]; return; }
 
@@ -3342,7 +3350,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     if (geteuid() != 0) {
         if (!self.inProcessServiceStarted) {
             self.inProcessServiceStarted = YES;
-            NSString *nameCopy = [sel.name copy] ?: @"iPlay";
+            NSString *nameCopy = [receiverName copy];
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -3370,7 +3378,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             usleep(350000);
         }
         if (self.sideStoreMode == 0) {
-            BOOL requested = iPlayStartLocalCarPlaySession(sel.name ?: @"iPlay", 7000);
+            BOOL requested = iPlayStartLocalCarPlaySession(receiverName, 7000);
             ip_log("[SIDESTORE] local A->A AirPlaySender/APTransport source=%d", requested ? 1 : 0);
             if (!requested) {
                 dispatch_async(dispatch_get_main_queue(), ^{
