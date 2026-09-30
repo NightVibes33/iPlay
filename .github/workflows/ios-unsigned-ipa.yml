@@ -52,6 +52,12 @@ jobs:
           strings "$BIN" | grep -F "_remotepairing-pairable-host._tcp."
           strings "$BIN" | grep -F "LocalDevVPN"
 
+          # Stock SideStore build must never instruct users to install jailbreak tooling.
+          if strings "$BIN" | grep -F "Sileo"; then
+            echo "ERROR: SideStore binary still contains Sileo/jailbreak install messaging"
+            exit 1
+          fi
+
           # Private frameworks are intentionally runtime-loaded instead of
           # hard-linked, so SideStore can sign the normal application binary.
           if otool -L "$BIN" | grep -E "AirPlaySender|APTransport|CarKit|BluetoothManager"; then
