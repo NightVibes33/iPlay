@@ -38,3 +38,21 @@ bash scripts/build-ios-unsigned.sh
 Output: `build-ios/iPlay-unsigned.ipa`
 
 The script deliberately performs **no signing**. SideStore signs the IPA during installation.
+
+### Same-device A → A source path
+
+A → A now prefers Apple's own in-process CarPlay sender stack instead of the
+`CARSessionRequestClient` XPC path:
+
+1. the embedded iPlay receiver starts and advertises AirPlay/CarPlay;
+2. `AirPlaySender.framework` is loaded dynamically;
+3. `APEndpointManagerCarPlayCreate` creates Apple's CarPlay endpoint manager;
+4. that manager initializes `APCarPlayControlServer`,
+   `APBrowserCarBonjourCreate`, and `APBrowserCarSessionCreate`;
+5. APTransport creates/registers its CarPlay helper and browses for the local
+   receiver through the normal CarPlay discovery/session machinery.
+
+The older `CARSessionRequestClient` loopback call remains only as a fallback.
+On stock SideStore installs, carkitd may reject that fallback because
+`com.apple.private.carkit.sessionRequest` is private; the new primary A → A
+path does not depend on that XPC request to initialize Apple's source stack.
