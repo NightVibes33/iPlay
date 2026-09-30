@@ -2811,7 +2811,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             self.primaryButton.alpha = 1.0;
 
             if (geteuid() != 0) {
-                /* Stock / SideStore build: no hotspot, BTstack, Sileo, or saved-car
+                /* Stock / SideStore build: no hotspot, jailbreak tooling, or saved-car
                  * setup is required before choosing a mode. */
                 self.headlineLabel.text = @"iPlay";
                 self.subtitleLabel.text = @"Run real CarPlay on this iPhone through LocalDevVPN,\nor use another iPhone as the source or receiver.";
