@@ -117,6 +117,7 @@ static void app_send_status(uint8_t code);
 
 /* ── Configuration ── */
 #define AIRPLAY_PORT 7000
+volatile int g_iPlayAirPlayServerReady = 0;
 #define DEVICE_ID    "90:B9:31:AC:86:A0"
 #define DEVICE_ID_RAW "90B931AC86A0"        /* no colons, for _raop._tcp name */
 #define DEVICE_ID_INT "159125076739744"     /* 0x90B931AC86A0 as decimal — for HTTP headers */
@@ -6164,6 +6165,14 @@ int main(int argc, char *argv[]) {
         });
     }
     TXTRecordDeallocate(&iPlayTxt);
+
+    /* The SideStore orchestrator is linked into this same executable.
+     * Publish readiness only after the RTSP listener and all receiver
+     * advertisements are installed, so A->A can start deterministically. */
+    __sync_synchronize();
+    g_iPlayAirPlayServerReady = 1;
+    __sync_synchronize();
+    printf("[SVC] iPlay in-process receiver READY for local A->A\n");
 
     /* iOS can join the Personal Hotspot after our first unsolicited mDNS
      * advertisements have already gone out. Keep nudging mDNSResponder to
