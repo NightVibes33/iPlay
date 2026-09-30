@@ -99,6 +99,197 @@ static void ip_log_open(void) {
     }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+ * Background audio keep-alive
+ *
+ * Mirrors StikDebug's proven pattern: a looping zero-filled PCM buffer
+ * through AVAudioEngine, playback+mixWithOthers, interruption recovery,
+ * and a 2-second health check. The CarPlay flow owns one lease.
+ * ═══════════════════════════════════════════════════════════════ */
+
+@interface IPlayBackgroundAudioKeeper : NSObject
+@property (nonatomic, strong) AVAudioEngine *engine;
+@property (nonatomic, strong) AVAudioPlayerNode *player;
+@property (nonatomic, strong) AVAudioPCMBuffer *silenceBuffer;
+@property (nonatomic, strong) NSTimer *healthTimer;
+@property (nonatomic, assign) BOOL requested;
+@property (nonatomic, assign) BOOL running;
+@property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTask;
++ (instancetype)shared;
+- (void)requestStart;
+- (void)requestStop;
+@end
+
+@implementation IPlayBackgroundAudioKeeper
+
++ (instancetype)shared {
+    static IPlayBackgroundAudioKeeper *keeper;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ keeper = [[self alloc] init]; });
+    return keeper;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _backgroundTask = UIBackgroundTaskInvalid;
+        [[NSNotificationCenter defaultCenter] addObserver:self
+            selector:@selector(handleAudioInterruption:)
+            name:AVAudioSessionInterruptionNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+            selector:@selector(handleMediaServicesReset:)
+            name:AVAudioSessionMediaServicesWereResetNotification object:nil];
+    }
+    return self;
+}
+
+- (void)runOnMain:(dispatch_block_t)block {
+    if ([NSThread isMainThread]) block();
+    else dispatch_async(dispatch_get_main_queue(), block);
+}
+
+- (void)requestStart {
+    [self runOnMain:^{
+        self.requested = YES;
+        [self startOrRecover];
+    }];
+}
+
+- (void)requestStop {
+    [self runOnMain:^{
+        self.requested = NO;
+        self.running = NO;
+        [self.healthTimer invalidate];
+        self.healthTimer = nil;
+        [self.player stop];
+        [self.engine stop];
+        self.player = nil;
+        self.engine = nil;
+        self.silenceBuffer = nil;
+
+        if (self.backgroundTask != UIBackgroundTaskInvalid) {
+            [[UIApplication sharedApplication] endBackgroundTask:self.backgroundTask];
+            self.backgroundTask = UIBackgroundTaskInvalid;
+        }
+
+        NSError *error = nil;
+        [[AVAudioSession sharedInstance] setActive:NO
+            withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
+            error:&error];
+        ip_log("background audio keep-alive stopped%s",
+               error ? [[NSString stringWithFormat:@": %@", error.localizedDescription] UTF8String] : "");
+    }];
+}
+
+- (void)startOrRecover {
+    if (!self.requested) return;
+
+    if (self.backgroundTask == UIBackgroundTaskInvalid) {
+        __weak typeof(self) weakSelf = self;
+        self.backgroundTask =
+            [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"iPlayCarPlaySession"
+                expirationHandler:^{
+                    typeof(self) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    if (strongSelf.backgroundTask != UIBackgroundTaskInvalid) {
+                        [[UIApplication sharedApplication] endBackgroundTask:strongSelf.backgroundTask];
+                        strongSelf.backgroundTask = UIBackgroundTaskInvalid;
+                    }
+                    ip_log("background task expired; silent audio keep-alive remains active");
+                }];
+    }
+
+    if (self.engine.isRunning && self.player.isPlaying) {
+        self.running = YES;
+        return;
+    }
+
+    NSError *error = nil;
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    [session setCategory:AVAudioSessionCategoryPlayback
+                    mode:AVAudioSessionModeDefault
+                 options:AVAudioSessionCategoryOptionMixWithOthers
+                   error:&error];
+    if (!error) [session setActive:YES error:&error];
+    if (error) {
+        ip_log("background audio session activation failed: %s",
+               error.localizedDescription.UTF8String);
+        return;
+    }
+
+    self.engine = [[AVAudioEngine alloc] init];
+    self.player = [[AVAudioPlayerNode alloc] init];
+    [self.engine attachNode:self.player];
+
+    AVAudioFormat *format = [self.engine.mainMixerNode outputFormatForBus:0];
+    if (!format || format.sampleRate <= 0) {
+        ip_log("background audio keep-alive: invalid mixer format");
+        return;
+    }
+    [self.engine connect:self.player to:self.engine.mainMixerNode format:format];
+
+    AVAudioFrameCount frames = (AVAudioFrameCount)MAX(1024.0, format.sampleRate);
+    AVAudioPCMBuffer *buffer =
+        [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:frames];
+    if (!buffer) {
+        ip_log("background audio keep-alive: could not allocate silent buffer");
+        return;
+    }
+    buffer.frameLength = frames;
+    AudioBufferList *abl = buffer.mutableAudioBufferList;
+    for (UInt32 i = 0; i < abl->mNumberBuffers; i++) {
+        if (abl->mBuffers[i].mData && abl->mBuffers[i].mDataByteSize) {
+            memset(abl->mBuffers[i].mData, 0, abl->mBuffers[i].mDataByteSize);
+        }
+    }
+    self.silenceBuffer = buffer;
+    [self.player scheduleBuffer:buffer atTime:nil
+                        options:AVAudioPlayerNodeBufferLoops
+              completionHandler:nil];
+
+    if (![self.engine startAndReturnError:&error]) {
+        ip_log("background audio engine start failed: %s",
+               error.localizedDescription.UTF8String);
+        return;
+    }
+    [self.player play];
+    self.running = YES;
+
+    if (!self.healthTimer) {
+        self.healthTimer = [NSTimer timerWithTimeInterval:2.0
+            repeats:YES block:^(__unused NSTimer *timer) {
+                IPlayBackgroundAudioKeeper *keeper = [IPlayBackgroundAudioKeeper shared];
+                if (keeper.requested &&
+                    (!keeper.engine.isRunning || !keeper.player.isPlaying)) {
+                    [keeper startOrRecover];
+                }
+            }];
+        [[NSRunLoop mainRunLoop] addTimer:self.healthTimer forMode:NSRunLoopCommonModes];
+    }
+    ip_log("background audio keep-alive active (silent PCM loop)");
+}
+
+- (void)handleAudioInterruption:(NSNotification *)notification {
+    NSNumber *value = notification.userInfo[AVAudioSessionInterruptionTypeKey];
+    if (!value || value.unsignedIntegerValue != AVAudioSessionInterruptionTypeEnded ||
+        !self.requested) return;
+    [self runOnMain:^{ [self startOrRecover]; }];
+}
+
+- (void)handleMediaServicesReset:(NSNotification *)notification {
+    (void)notification;
+    if (!self.requested) return;
+    [self runOnMain:^{
+        self.engine = nil;
+        self.player = nil;
+        self.silenceBuffer = nil;
+        self.running = NO;
+        [self startOrRecover];
+    }];
+}
+@end
+
 /* ═══════════════════════════════════════════════════════════════
  * Configuration
  * ═══════════════════════════════════════════════════════════════ */
@@ -2542,6 +2733,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)applicationWillTerminate:(UIApplication *)application {
     (void)application;
+    [[IPlayBackgroundAudioKeeper shared] requestStop];
     [self endAWDLSuppression];
     [self stopNetworkDumpCaptureWithReason:@"app terminating"];
     kill_pid(self.baaBrokerPid);
@@ -3071,6 +3263,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)startFlow {
+    [[IPlayBackgroundAudioKeeper shared] requestStart];
     NSString *flowName = self.cars.selected.name ?: @"iPlay";
     NSString *flowSSID = self.cars.apSSID ?: @"";
     ip_log("startFlow: car='%s' ssid='%s'",
@@ -3506,6 +3699,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)stopFlow {
+    [[IPlayBackgroundAudioKeeper shared] requestStop];
     if (iPlayIsStockSideStoreBuild()) iPlayStopRequestedCarPlaySession();
     [self endAWDLSuppression];
     [self stopNetworkDumpCaptureWithReason:@"user cancelled / stopping flow"];
@@ -4245,25 +4439,86 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     return rc == 0 ? archive : nil;
 }
 
+
+- (NSString *)createTextLogExport {
+    if (g_logfile) fflush(g_logfile);
+
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:@"iPlay SideStore diagnostic log\n"];
+    [text appendString:@"========================================\n"];
+    [text appendFormat:@"Exported: %@\n", [NSDate date]];
+    [text appendFormat:@"App version: %s\n", APP_VERSION];
+    [text appendFormat:@"iOS: %@\n", [UIDevice currentDevice].systemVersion];
+    [text appendFormat:@"Device: %@\n", [UIDevice currentDevice].model];
+    [text appendFormat:@"State: %ld\n", (long)self.state];
+    [text appendFormat:@"SideStore mode: %ld (0=A->A, 1=Receive A->B, 2=Send A->B)\n",
+                       (long)self.sideStoreMode];
+    [text appendFormat:@"Background audio keep-alive requested: %@\n",
+                       [IPlayBackgroundAudioKeeper shared].requested ? @"yes" : @"no"];
+    [text appendFormat:@"AirPlay receiver ready: %d\n", g_iPlayAirPlayServerReady ? 1 : 0];
+
+    NSArray<NSDictionary *> *sources = @[
+        @{@"title": @"APP LOG", @"path": @APP_LOG},
+        @{@"title": @"CARPLAY SERVICE LOG", @"path": @"/tmp/iplay-service.log"},
+        @{@"title": @"LOCALDEVVPN / RSD LOG", @"path": @"/tmp/iplay-localdevvpn.log"},
+    ];
+
+    for (NSDictionary *source in sources) {
+        NSString *title = source[@"title"];
+        NSString *path = source[@"path"];
+        [text appendFormat:@"\n\n===== %@ =====\n", title];
+        NSError *error = nil;
+        NSString *body = [NSString stringWithContentsOfFile:path
+                                                   encoding:NSUTF8StringEncoding
+                                                      error:&error];
+        if (body.length) {
+            [text appendString:body];
+            if (![body hasSuffix:@"\n"]) [text appendString:@"\n"];
+        } else {
+            [text appendFormat:@"(no log file at %@%@)\n", path,
+                               error ? [NSString stringWithFormat:@": %@", error.localizedDescription] : @""];
+        }
+    }
+
+    NSString *name = [NSString stringWithFormat:@"iPlay-logs-%@.txt",
+                      [self timestampStringForFilename]];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
+    NSError *error = nil;
+    BOOL ok = [text writeToFile:path atomically:YES
+                       encoding:NSUTF8StringEncoding error:&error];
+    if (!ok) {
+        ip_log("text log export failed: %s",
+               error.localizedDescription.UTF8String ?: "unknown");
+        return nil;
+    }
+    ip_log("text log export ready path=%s", path.UTF8String);
+    return path;
+}
+
 - (void)exportDiagnostics {
     UIAlertController *busy = [UIAlertController
         alertControllerWithTitle:@"Preparing Logs"
-        message:@"Collecting iPlay logs..."
+        message:(iPlayIsStockSideStoreBuild()
+                 ? @"Creating iPlay .txt log..."
+                 : @"Collecting iPlay logs...")
         preferredStyle:UIAlertControllerStyleAlert];
     UIViewController *presenter = self.vc.presentedViewController ?: self.vc;
     [presenter presentViewController:busy animated:YES completion:nil];
 
     dispatch_async(self.bgQueue, ^{
-        NSString *archive = [self createDiagnosticsArchive];
+        NSString *exportPath = iPlayIsStockSideStoreBuild()
+            ? [self createTextLogExport]
+            : [self createDiagnosticsArchive];
         dispatch_async(dispatch_get_main_queue(), ^{
             [busy dismissViewControllerAnimated:YES completion:^{
-                if (!archive) {
+                if (!exportPath) {
                     [self presentAlertWithTitle:@"Could Not Export Logs"
-                                        message:@"tar was not available or the archive could not be created."];
+                                        message:(iPlayIsStockSideStoreBuild()
+                                                 ? @"The text log could not be created."
+                                                 : @"The diagnostics archive could not be created.")];
                     return;
                 }
-                NSURL *url = [NSURL fileURLWithPath:archive];
-                [self presentShareForURL:url];
+                [self presentShareForURL:[NSURL fileURLWithPath:exportPath]];
             }];
         });
     });
@@ -4276,7 +4531,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             APP_VERSION, APP_AUTHOR];
         UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
             message:msg preferredStyle:UIAlertControllerStyleAlert];
-        [ac addAction:[UIAlertAction actionWithTitle:@"Send Log"
+        [ac addAction:[UIAlertAction actionWithTitle:@"Export Logs (.txt)"
             style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
                 [self exportDiagnostics];
             }]];
