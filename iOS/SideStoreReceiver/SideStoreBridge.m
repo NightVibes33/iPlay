@@ -12,9 +12,79 @@
 static id gSessionRequestClient = nil;
 static id gSessionRequestHost = nil;
 static NSString *gSessionRequestIdentifier = nil;
+static CFTypeRef gLocalCarPlayEndpointManager = NULL;
+static void *gAirPlaySenderHandle = NULL;
+static void *gAPTransportHandle = NULL;
 
 static BOOL iPlayLoadFramework(NSString *path) {
     return dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL) != NULL;
+}
+
+
+/*
+ * Same-device CarPlay source path.
+ *
+ * AirPlaySender's APEndpointManagerCarPlayCreate is Apple's own local
+ * CarPlay endpoint manager factory. It initializes the CarPlay control
+ * server plus USB/Wi-Fi/session browsers. APTransport's session browser
+ * in turn creates/registers its CarPlay helper with the shared
+ * APCarSessionRequestHandler.
+ *
+ * This is deliberately the primary A -> A path. CARSessionRequestClient
+ * is retained only as a compatibility fallback because its carkitd XPC
+ * endpoint is entitlement-gated on stock builds.
+ */
+static BOOL iPlayStartInProcessCarPlaySourceStack(void) {
+    if (gLocalCarPlayEndpointManager) return YES;
+
+    gAPTransportHandle = dlopen(
+        "/System/Library/PrivateFrameworks/APTransport.framework/APTransport",
+        RTLD_NOW | RTLD_GLOBAL);
+    gAirPlaySenderHandle = dlopen(
+        "/System/Library/PrivateFrameworks/AirPlaySender.framework/AirPlaySender",
+        RTLD_NOW | RTLD_GLOBAL);
+    if (!gAPTransportHandle || !gAirPlaySenderHandle) {
+        NSLog(@"[iPlay:A->A] APTransport/AirPlaySender unavailable");
+        return NO;
+    }
+
+    typedef int32_t (*APEndpointManagerCarPlayCreateFn)(
+        CFAllocatorRef allocator,
+        CFDictionaryRef options,
+        CFTypeRef *managerOut);
+
+    APEndpointManagerCarPlayCreateFn create =
+        (APEndpointManagerCarPlayCreateFn)dlsym(
+            gAirPlaySenderHandle, "APEndpointManagerCarPlayCreate");
+    if (!create) {
+        NSLog(@"[iPlay:A->A] APEndpointManagerCarPlayCreate not exported");
+        return NO;
+    }
+
+    CFTypeRef manager = NULL;
+    int32_t status = create(kCFAllocatorDefault, NULL, &manager);
+    if (status != 0 || !manager) {
+        NSLog(@"[iPlay:A->A] APEndpointManagerCarPlayCreate failed status=%d manager=%p",
+              status, manager);
+        if (manager) CFRelease(manager);
+        return NO;
+    }
+
+    gLocalCarPlayEndpointManager = manager;
+    NSLog(@"[iPlay:A->A] Apple CarPlay endpoint manager active: %p", manager);
+    return YES;
+}
+
+static void iPlayStopInProcessCarPlaySourceStack(void) {
+    if (!gLocalCarPlayEndpointManager) return;
+
+    /*
+     * Fig endpoint managers are CF/CM base objects. Releasing the retained
+     * manager runs the framework's normal invalidation/finalization path.
+     */
+    CFRelease(gLocalCarPlayEndpointManager);
+    gLocalCarPlayEndpointManager = NULL;
+    NSLog(@"[iPlay:A->A] Apple CarPlay endpoint manager released");
 }
 
 BOOL iPlayProbePrivateBluetooth(void) {
@@ -145,6 +215,25 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
 }
 
 BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
+    (void)displayName;
+    (void)port;
+
+    /*
+     * Primary A -> A path: bring up Apple's local CarPlay sender stack.
+     * The embedded iPlay receiver is already listening/advertising in the
+     * same process, so AirPlaySender/APTransport can discover it through
+     * the normal CarPlay Bonjour/session browser path.
+     */
+    if (iPlayStartInProcessCarPlaySourceStack()) {
+        return YES;
+    }
+
+    /*
+     * Compatibility fallback for OS builds/environments where the direct
+     * source factory is unavailable. This may be rejected by carkitd on a
+     * normal SideStore sandbox because sessionRequest is a private
+     * entitlement, so it is intentionally not the primary implementation.
+     */
     id host = iPlayCreateSessionHost(displayName, @[@"::1"], @[], port, YES, NO);
     return iPlayStartSessionWithHost(host, YES);
 }
@@ -304,6 +393,8 @@ NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
 }
 
 void iPlayStopRequestedCarPlaySession(void) {
+    iPlayStopInProcessCarPlaySourceStack();
+
     if (gSessionRequestClient) {
         SEL cancel = NSSelectorFromString(@"cancelRequests");
         if ([gSessionRequestClient respondsToSelector:cancel]) {
