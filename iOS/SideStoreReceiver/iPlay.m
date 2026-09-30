@@ -3368,17 +3368,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
                     snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
-                    char *argsLocal[] = {
-                        (char *)"iPlay-CarPlay-Service",
-                        (char *)"--name", nameArg,
-                        (char *)"--width", widthArg,
-                        (char *)"--height", heightArg,
-                        (char *)"--fps", fpsArg,
-                        (char *)"--screen-rcvbuf", bufferArg,
-                        (char *)"--local-simulator",
-                        NULL
-                    };
-                    char *argsRemote[] = {
+                    /*
+                     * A->A now uses the real trusted CarKit/iAP2 path over
+                     * LocalDevVPN, so it needs the receiver's normal BAA/MFi
+                     * authentication profile too. Do not use the old
+                     * MFi-suppressed simulator profile here.
+                     */
+                    char *args[] = {
                         (char *)"iPlay-CarPlay-Service",
                         (char *)"--name", nameArg,
                         (char *)"--width", widthArg,
@@ -3387,10 +3383,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--screen-rcvbuf", bufferArg,
                         NULL
                     };
-                    BOOL localAtoA = (self.sideStoreMode == 0);
-                    int rc = iPlayCarPlayServiceMain(
-                        localAtoA ? 12 : 11,
-                        localAtoA ? argsLocal : argsRemote);
+                    int rc = iPlayCarPlayServiceMain(11, args);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
                 }
