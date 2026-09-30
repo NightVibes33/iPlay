@@ -408,6 +408,100 @@ static bool issue_baa_for_broker(void) {
     return g_baa_ready && g_baa_broker_key;
 }
 
+/*
+ * C ABI used by the LocalDevVPN/RSD A->A bridge.
+ *
+ * DiPlay's wired iAP2 authentication expects the BAA form of AA01:
+ *   parameter 0 = leaf certificate
+ *   parameter 1 = one-byte value 1
+ *   parameter 2 = intermediate certificate
+ * followed by AA02/AA03 challenge signing with the same DeviceIdentity key.
+ */
+static void iPlayWriteBE16(uint8_t *out, uint16_t value) {
+    out[0] = (uint8_t)(value >> 8);
+    out[1] = (uint8_t)(value & 0xff);
+}
+
+int iPlayBAAPrepare(void) {
+    if (g_baa_ready && g_baa_broker_key &&
+        g_baa_leaf_der && g_baa_leaf_len > 0 &&
+        g_baa_inter_der && g_baa_inter_len > 0) {
+        return 0;
+    }
+    return issue_baa_for_broker() ? 0 : -1;
+}
+
+int iPlayBAACopyIap2Certificate(uint8_t *out, size_t capacity,
+                                size_t *outLength) {
+    if (!outLength || iPlayBAAPrepare() != 0) return -1;
+
+    size_t leafLength = (size_t)g_baa_leaf_len;
+    size_t intermediateLength = (size_t)g_baa_inter_len;
+    size_t leafParameter = 4 + leafLength;
+    size_t typeParameter = 5;
+    size_t intermediateParameter = 4 + intermediateLength;
+    size_t total = leafParameter + typeParameter + intermediateParameter;
+
+    if (leafParameter > UINT16_MAX ||
+        intermediateParameter > UINT16_MAX ||
+        total > 65525) {
+        return -1;
+    }
+
+    *outLength = total;
+    if (!out || capacity < total) return -2;
+
+    size_t offset = 0;
+    iPlayWriteBE16(out + offset, (uint16_t)leafParameter);
+    iPlayWriteBE16(out + offset + 2, 0);
+    memcpy(out + offset + 4, g_baa_leaf_der, leafLength);
+    offset += leafParameter;
+
+    iPlayWriteBE16(out + offset, (uint16_t)typeParameter);
+    iPlayWriteBE16(out + offset + 2, 1);
+    out[offset + 4] = 1;
+    offset += typeParameter;
+
+    iPlayWriteBE16(out + offset, (uint16_t)intermediateParameter);
+    iPlayWriteBE16(out + offset + 2, 2);
+    memcpy(out + offset + 4, g_baa_inter_der, intermediateLength);
+    return 0;
+}
+
+int iPlayBAASignChallenge(const uint8_t *challenge, size_t challengeLength,
+                          uint8_t *out, size_t capacity,
+                          size_t *outLength) {
+    if (!challenge || challengeLength == 0 || challengeLength > 4096 ||
+        !outLength || iPlayBAAPrepare() != 0) {
+        return -1;
+    }
+
+    NSData *message = [NSData dataWithBytes:challenge length:challengeLength];
+    CFErrorRef error = NULL;
+    CFDataRef signature = SecKeyCreateSignature(
+        g_baa_broker_key,
+        kSecKeyAlgorithmECDSASignatureMessageX962SHA256,
+        (__bridge CFDataRef)message,
+        &error);
+    if (!signature) {
+        if (error) {
+            NSLog(@"[BAA] A->A challenge signing failed: %@", error);
+            CFRelease(error);
+        }
+        return -1;
+    }
+
+    size_t length = (size_t)CFDataGetLength(signature);
+    *outLength = length;
+    if (!out || capacity < length) {
+        CFRelease(signature);
+        return -2;
+    }
+    memcpy(out, CFDataGetBytePtr(signature), length);
+    CFRelease(signature);
+    return 0;
+}
+
 static void baa_broker_handle_client(int client) {
     uint8_t header[BAA_BROKER_HEADER_SIZE];
     if (!baa_read_exact(client, header, sizeof(header)) ||
