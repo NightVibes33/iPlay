@@ -3368,7 +3368,17 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
                     snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
-                    char *args[] = {
+                    char *argsLocal[] = {
+                        (char *)"iPlay-CarPlay-Service",
+                        (char *)"--name", nameArg,
+                        (char *)"--width", widthArg,
+                        (char *)"--height", heightArg,
+                        (char *)"--fps", fpsArg,
+                        (char *)"--screen-rcvbuf", bufferArg,
+                        (char *)"--local-simulator",
+                        NULL
+                    };
+                    char *argsRemote[] = {
                         (char *)"iPlay-CarPlay-Service",
                         (char *)"--name", nameArg,
                         (char *)"--width", widthArg,
@@ -3377,7 +3387,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--screen-rcvbuf", bufferArg,
                         NULL
                     };
-                    int rc = iPlayCarPlayServiceMain(11, args);
+                    BOOL localAtoA = (self.sideStoreMode == 0);
+                    int rc = iPlayCarPlayServiceMain(
+                        localAtoA ? 12 : 11,
+                        localAtoA ? argsLocal : argsRemote);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
                 }
