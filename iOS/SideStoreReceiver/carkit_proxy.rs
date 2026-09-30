@@ -236,6 +236,45 @@ async fn open_carkit(
             }
         };
 
+        /*
+         * Preferred A->A path: carkitd's CRCarKitIAPRemoteServiceAgent.
+         *
+         * This is NOT the same service as com.apple.carkit.service. Apple's
+         * remote-iAP agent creates an ACCTransport endpoint, marks the wired
+         * CarPlay simulator active, and forwards these raw bytes into the
+         * normal iAP stack. That is the path capable of producing the real
+         * CarPlay pairing/session state that Settings observes.
+         *
+         * The service is registered through remote_service_listen(), not the
+         * Lockdown shim, so do not send an RSD-checkin plist on its data
+         * socket; the payload is the iAP byte stream itself.
+         */
+        const REMOTE_IAP: &str = "com.apple.carkit.remote-iap.service";
+        if let Some(service) = handshake.services.get(REMOTE_IAP) {
+            logger.log(format!(
+                "LocalDevVPN: opening preferred {REMOTE_IAP} on RSD port {} (entitlement={})",
+                service.port, service.entitlement
+            ));
+            match adapter.connect(service.port).await {
+                Ok(stream) => {
+                    logger.log("LocalDevVPN: remote-iAP transport connected; handing raw stream to wired iAP2");
+                    return Ok((adapter, handshake, Box::new(stream)));
+                }
+                Err(error) => {
+                    logger.log(format!(
+                        "LocalDevVPN: remote-iAP connection failed ({error:?}); trying legacy CarKit shim"
+                    ));
+                }
+            }
+        } else {
+            logger.log("LocalDevVPN: remote-iAP service not advertised; trying legacy CarKit shim");
+        }
+
+        /*
+         * Compatibility fallback retained for older builds where the
+         * dedicated remote-iAP listener is absent. This is a Lockdown shim,
+         * so it requires the normal RSD check-in before exposing its socket.
+         */
         const SHIM: &str = "com.apple.carkit.service.shim.remote";
         const BARE: &str = "com.apple.carkit.service";
         let (service_name, port) = if let Some(service) = handshake.services.get(SHIM) {
@@ -249,11 +288,11 @@ async fn open_carkit(
                 .collect::<Vec<_>>()
                 .join(", ");
             return Err(format!(
-                "trusted RSD connected but CarKit service is absent (carkit services: {names})"
+                "trusted RSD connected but no usable CarKit service is present (carkit services: {names})"
             ));
         };
 
-        logger.log(format!("LocalDevVPN: opening {service_name} on RSD port {port}"));
+        logger.log(format!("LocalDevVPN: compatibility opening {service_name} on RSD port {port}"));
         let stream = adapter
             .connect(port)
             .await
@@ -264,9 +303,9 @@ async fn open_carkit(
             .map_err(|e| format!("RSD checkin for {service_name}: {e:?}"))?;
         let socket = device
             .get_socket()
-            .ok_or_else(|| "CarKit RSD stream did not expose a socket".to_string())?;
+            .ok_or_else(|| "CarKit RSD shim did not expose a socket".to_string())?;
 
-        return Ok((adapter, handshake, socket));
+        Ok((adapter, handshake, socket))
     }
 
     Err(format!(
