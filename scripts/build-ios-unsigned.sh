@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/iOS/SideStoreReceiver"
 OUT="$ROOT/build-ios"
+
+# Hosted runners can inherit a literal/dead DEVELOPER_DIR from upstream scripts.
+# Resolve the active Xcode installation before any xcrun or Cargo invocation.
+export DEVELOPER_DIR="$(xcode-select -p)"
+unset SDKROOT || true
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun --sdk iphoneos -f clang)"
 TARGET="arm64-apple-ios16.0"
@@ -63,7 +68,6 @@ if "al_carkit_proxy_run" not in s:
 p.write_text(s)
 PY
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 export IPHONEOS_DEPLOYMENT_TARGET=16.0
 source "$HOME/.cargo/env" 2>/dev/null || true
 rustup target add aarch64-apple-ios
