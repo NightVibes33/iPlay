@@ -450,9 +450,14 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
 }
 
 BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
-    BOOL settingsVehicle = iPlayEnsurePairedVehicleRecord(displayName);
-    NSLog(@"[iPlay:Settings] vehicle record requested before A->A result=%d",
-          settingsVehicle ? 1 : 0);
+    /*
+     * Do not use CRPairedVehicleManager as the primary persistence path here.
+     * Its carkitd XPC service requires com.apple.private.carkit, which a normal
+     * SideStore provisioning profile does not carry. The trusted RSD/iAP2
+     * accessory session below lets carkitd itself create/save the paired
+     * vehicle, which is exactly what Settings -> General -> CarPlay reads.
+     */
+    NSLog(@"[iPlay:Settings] A->A vehicle persistence delegated to trusted RSD/iAP2 CarKit lifecycle");
 
     /*
      * Preferred SideStore path: use the same Remote Pairing + LocalDevVPN
