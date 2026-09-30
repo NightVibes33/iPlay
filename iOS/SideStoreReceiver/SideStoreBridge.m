@@ -170,6 +170,114 @@ static void iPlayStopInProcessCarPlaySourceStack(void) {
     NSLog(@"[iPlay:A->A] Apple CarPlay endpoint manager released");
 }
 
+
+static BOOL iPlayEnsurePairedVehicleRecord(NSString *displayName) {
+    if (!iPlayLoadFramework(@"/System/Library/PrivateFrameworks/CarKit.framework/CarKit")) {
+        NSLog(@"[iPlay:Settings] CarKit unavailable");
+        return NO;
+    }
+
+    Class vehicleClass = NSClassFromString(@"CRVehicle");
+    Class managerClass = NSClassFromString(@"CRPairedVehicleManager");
+    if (!vehicleClass || !managerClass) {
+        NSLog(@"[iPlay:Settings] CRVehicle/CRPairedVehicleManager unavailable");
+        return NO;
+    }
+
+    NSString *name = displayName.length ? displayName : @"iPlay";
+    NSUUID *identifier = [[NSUUID alloc] initWithUUIDString:@"49504C41-592D-4341-5250-4C4159414131"];
+    NSString *wifiUUID = @"49504C41-592D-5749-4649-555549444131";
+
+    id vehicle = ((id (*)(id, SEL))objc_msgSend)(vehicleClass, @selector(alloc));
+    SEL initPair = NSSelectorFromString(@"initWithIdentifier:certificateSerial:");
+    if ([vehicle respondsToSelector:initPair]) {
+        vehicle = ((id (*)(id, SEL, id, id))objc_msgSend)(vehicle, initPair, identifier, nil);
+    } else {
+        vehicle = ((id (*)(id, SEL))objc_msgSend)(vehicle, @selector(init));
+        SEL setIdentifier = NSSelectorFromString(@"setIdentifier:");
+        if ([vehicle respondsToSelector:setIdentifier]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(vehicle, setIdentifier, identifier);
+        }
+    }
+    if (!vehicle) return NO;
+
+    struct ObjSetter { const char *name; id value; } objectSetters[] = {
+        {"setVehicleName:", name},
+        {"setVehicleModelName:", @"iPlay Head Unit"},
+        {"setCarplayWiFiUUID:", wifiUUID},
+        {"setBluetoothAddress:", @"90:B9:31:AC:86:A0"},
+        {"setSupportsStartSessionRequest:", @YES},
+        {"setLastConnectedDate:", [NSDate date]},
+        {"setSDKVersion:", @"iPlay-SideStore-1"},
+    };
+    for (size_t i = 0; i < sizeof(objectSetters)/sizeof(objectSetters[0]); i++) {
+        SEL sel = NSSelectorFromString([NSString stringWithUTF8String:objectSetters[i].name]);
+        if ([vehicle respondsToSelector:sel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(vehicle, sel, objectSetters[i].value);
+        }
+    }
+
+    SEL setPairing = NSSelectorFromString(@"setPairingStatus:");
+    if ([vehicle respondsToSelector:setPairing]) {
+        ((void (*)(id, SEL, unsigned long long))objc_msgSend)(vehicle, setPairing, 2ULL);
+    }
+    SEL setUSB = NSSelectorFromString(@"setSupportsUSBCarPlay:");
+    if ([vehicle respondsToSelector:setUSB]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(vehicle, setUSB, YES);
+    }
+    SEL setWireless = NSSelectorFromString(@"setSupportsWirelessCarPlay:");
+    if ([vehicle respondsToSelector:setWireless]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(vehicle, setWireless, YES);
+    }
+    SEL setBLE = NSSelectorFromString(@"setSupportsBluetoothLE:");
+    if ([vehicle respondsToSelector:setBLE]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(vehicle, setBLE, YES);
+    }
+
+    id manager = ((id (*)(id, SEL))objc_msgSend)(managerClass, @selector(alloc));
+    manager = ((id (*)(id, SEL))objc_msgSend)(manager, @selector(init));
+    if (!manager) return NO;
+
+    SEL save = NSSelectorFromString(@"saveVehicle:");
+    id saved = nil;
+    if ([manager respondsToSelector:save]) {
+        saved = ((id (*)(id, SEL, id))objc_msgSend)(manager, save, vehicle);
+    } else {
+        SEL saveAsync = NSSelectorFromString(@"saveVehicle:completion:");
+        if ([manager respondsToSelector:saveAsync]) {
+            dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+            __block id result = nil;
+            void (^completion)(id, NSError *) = ^(id value, NSError *error) {
+                if (error) NSLog(@"[iPlay:Settings] saveVehicle error=%@", error);
+                result = value;
+                dispatch_semaphore_signal(sem);
+            };
+            ((void (*)(id, SEL, id, id))objc_msgSend)(manager, saveAsync, vehicle, completion);
+            dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC));
+            saved = result;
+        }
+    }
+
+    SEL paired = NSSelectorFromString(@"pairedVehicles");
+    NSArray *vehicles = [manager respondsToSelector:paired]
+        ? ((id (*)(id, SEL))objc_msgSend)(manager, paired) : nil;
+
+    BOOL found = NO;
+    for (id item in vehicles ?: @[]) {
+        SEL identSel = NSSelectorFromString(@"identifier");
+        id itemID = [item respondsToSelector:identSel]
+            ? ((id (*)(id, SEL))objc_msgSend)(item, identSel) : nil;
+        if ([itemID isEqual:identifier]) {
+            found = YES;
+            break;
+        }
+    }
+
+    NSLog(@"[iPlay:Settings] paired vehicle save=%@ visible=%d count=%lu",
+          saved ?: vehicle, found ? 1 : 0, (unsigned long)vehicles.count);
+    return found || saved != nil;
+}
+
 BOOL iPlayProbePrivateBluetooth(void) {
     if (!iPlayLoadFramework(@"/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager")) return NO;
     Class cls = NSClassFromString(@"BluetoothManager");
@@ -307,6 +415,10 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
 }
 
 BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
+    BOOL settingsVehicle = iPlayEnsurePairedVehicleRecord(displayName);
+    NSLog(@"[iPlay:Settings] vehicle record requested before A->A result=%d",
+          settingsVehicle ? 1 : 0);
+
     /*
      * Preferred SideStore path: use the same Remote Pairing + LocalDevVPN
      * transport as NFCARD/AirCard. The Rust core opens the trusted RSD
