@@ -47,6 +47,7 @@ extern int iPlayBAAGetCertificateChain(uint8_t **leaf, size_t *leafLength,
                                        uint8_t **intermediate, size_t *intermediateLength);
 extern int iPlayBAASignChallenge(const uint8_t *challenge, size_t challengeLength,
                                  uint8_t **signature, size_t *signatureLength);
+extern void iPlayLocalDevVPNCarPlayDidFail(const char *reason);
 
 #define IAP2_SESSION_CONTROL 10
 #define IAP2_SYN 0x80
@@ -810,10 +811,29 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
             char *error = NULL;
             int32_t rc = al_carkit_proxy_run(path.fileSystemRepresentation, proxyPort,
                                              rust_log, NULL, &error);
+            NSString *failure = error ? [NSString stringWithUTF8String:error] : nil;
             local_log("RSD CarKit proxy ended rc=%d error=%s", rc, error ?: "none");
             if (error) al_string_free(error);
+
             int fd = g_control_fd;
-            if (fd >= 0) shutdown(fd, SHUT_RDWR);
+            if (fd >= 0) {
+                shutdown(fd, SHUT_RDWR);
+            } else {
+                /* The proxy failed before attaching to our iAP2 listener.
+                 * Closing the listener unblocks accept() so we can invoke the
+                 * direct APTransport fallback instead of hanging forever. */
+                int listenFd = g_listener_fd;
+                if (listenFd >= 0) {
+                    shutdown(listenFd, SHUT_RDWR);
+                    close(listenFd);
+                    g_listener_fd = -1;
+                }
+                if (!atomic_load(&g_local_stop)) {
+                    iPlayLocalDevVPNCarPlayDidFail(
+                        failure.length ? failure.UTF8String :
+                        "LocalDevVPN CarKit transport ended before iAP2 connected");
+                }
+            }
         });
 
         struct sockaddr_in peer;
@@ -823,6 +843,9 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
         g_listener_fd = -1;
         if (control < 0) {
             local_log("CarKit proxy accept failed: %s", strerror(errno));
+            if (!atomic_load(&g_local_stop)) {
+                iPlayLocalDevVPNCarPlayDidFail("LocalDevVPN CarKit proxy did not attach to iAP2");
+            }
             atomic_store(&g_local_running, false);
             return;
         }
@@ -831,6 +854,9 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
 
         BOOL ok = run_iap2(control, displayName, airPlayPort);
         local_log("local wired CarPlay control ended ok=%d", ok ? 1 : 0);
+        if (!ok && !atomic_load(&g_local_stop)) {
+            iPlayLocalDevVPNCarPlayDidFail("LocalDevVPN wired iAP2 negotiation failed");
+        }
         shutdown(control, SHUT_RDWR);
         close(control);
         g_control_fd = -1;
