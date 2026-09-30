@@ -213,11 +213,20 @@ static id iPlayCreateSessionHost(NSString *displayName,
     NSString *name = displayName.length ? displayName : @"iPlay";
     NSArray *wired = wiredAddresses ?: @[];
     NSArray *wireless = wirelessAddresses ?: @[];
-    NSString *wifiUUID = [NSUUID UUID].UUIDString;
+
+    /*
+     * A->A is deliberately a wired CarPlay-simulator session over loopback.
+     * Do not populate wireless pairing identity for that path: APTransport
+     * treats a non-nil carplayWiFiUUID as a request to enter Wi-Fi
+     * connectivity state even when wiredCarPlaySimulator is true.
+     */
+    BOOL localSimulator = simulator && !remoteConnected;
+    NSString *wifiUUID = localSimulator ? nil : [NSUUID UUID].UUIDString;
     NSString *deviceID = @"90:B9:31:AC:86:A0";
-    NSString *publicKey = @"1b15f0ad62c894721c4097651801e62845451a183c8df8af7d6b20430823586f";
+    NSString *publicKey = localSimulator ? nil :
+        @"1b15f0ad62c894721c4097651801e62845451a183c8df8af7d6b20430823586f";
     NSString *sourceVersion = @"509.0";
-    NSUUID *pairedIdentifier = [NSUUID UUID];
+    NSUUID *pairedIdentifier = localSimulator ? nil : [NSUUID UUID];
 
     id host = ((id (*)(id, SEL))objc_msgSend)(hostClass, @selector(alloc));
 
