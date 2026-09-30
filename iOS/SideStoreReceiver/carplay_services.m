@@ -232,17 +232,17 @@ static const uint8_t ed25519_pk[32] = {
 #define FEATURES_LOCAL_WITH_HK   "0x40280,0x61"
 #define FEATURES_LOCAL_NO_HK     "0x40280,0x21"
 
+/* HK ON — bit 38 (HKPairingAndEncrypt). The newer Apple SDK unconditionally
+ * sets this bit. iOS 18 may require it for CarPlay connections.
+ * Without it, the iPhone may refuse to connect to port 7000. */
+static bool g_useHK = true;
+
 static const char *current_features(void) {
     if (g_local_simulator_mode) {
         return g_useHK ? FEATURES_LOCAL_WITH_HK : FEATURES_LOCAL_NO_HK;
     }
     return g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK;
 }
-
-/* HK ON — bit 38 (HKPairingAndEncrypt). The newer Apple SDK unconditionally
- * sets this bit. iOS 18 may require it for CarPlay connections.
- * Without it, the iPhone may refuse to connect to port 7000. */
-static bool g_useHK = true;
 
 /* Global pairing context — initialized in main(), used by pair handlers */
 static pair_ctx_t *g_pair = NULL;
