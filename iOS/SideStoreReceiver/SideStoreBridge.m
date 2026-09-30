@@ -20,6 +20,9 @@ static id gAPSharedSessionHandler = nil;
 static IMP gAPOriginalAddCarPlayHelper = NULL;
 static IMP gAPOriginalRegisterMachService = NULL;
 
+extern BOOL iPlayStartLocalDevVPNCarPlay(NSString *displayName, NSInteger airPlayPort);
+extern void iPlayStopLocalDevVPNCarPlay(void);
+
 static BOOL iPlayLoadFramework(NSString *path) {
     return dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL) != NULL;
 }
@@ -305,6 +308,17 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
 
 BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
     /*
+     * Preferred SideStore path: use the same Remote Pairing + LocalDevVPN
+     * transport as NFCARD/AirCard. The Rust core opens the trusted RSD
+     * com.apple.carkit.service shim and the local controller speaks the wired
+     * iAP2 head-unit protocol directly to it.
+     */
+    if (iPlayStartLocalDevVPNCarPlay(displayName, port)) {
+        NSLog(@"[iPlay:A->A] LocalDevVPN/RSD CarKit controller started");
+        return YES;
+    }
+
+    /*
      * 1. Initialize Apple's own sender stack. APBrowserCarSessionCreate
      *    registers a real CarPlay helper with APTransport's shared handler.
      * 2. Capture that handler in-process.
@@ -508,6 +522,7 @@ NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
 }
 
 void iPlayStopRequestedCarPlaySession(void) {
+    iPlayStopLocalDevVPNCarPlay();
     /* Stop the direct APTransport A->A session before releasing its manager. */
     if (gAPSharedSessionHandler && gSessionRequestHost) {
         SEL stopped = NSSelectorFromString(@"stoppedSessionForHostIdentifier:");
