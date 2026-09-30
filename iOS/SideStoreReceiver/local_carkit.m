@@ -496,7 +496,7 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     };
     param_u16_list(&p, 6, sent, sizeof(sent)/sizeof(sent[0]));
     param_u16_list(&p, 7, recv, sizeof(recv)/sizeof(recv[0]));
-    param_u8(&p, 8, 0);
+    param_u8(&p, 8, 2);
     param_u16(&p, 9, 20);
     Buffer ea; buf_init(&ea, 64);
     param_u8(&ea, 0, 1); param_string(&ea, 1, "com.nightvibes33.iplay"); param_u8(&ea, 2, 0);
@@ -504,8 +504,8 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     param_string(&p, 12, "en");
     param_string(&p, 13, "en");
     Buffer usb; buf_init(&usb, 96);
-    param_u16(&usb, 0, 1);
-    param_string(&usb, 1, "iPlay LocalDevVPN");
+    param_u16(&usb, 0, 0);
+    param_string(&usb, 1, "USBHostTransport");
     param_void(&usb, 2);
     param_u8(&usb, 3, 0);
     param_void(&usb, 4);
