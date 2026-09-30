@@ -2806,21 +2806,31 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
     switch (self.state) {
         case StateIdle: {
-            BOOL apReady = [self.cars apReady];
             self.primaryButton.hidden = NO;
             self.primaryButton.enabled = YES;
             self.primaryButton.alpha = 1.0;
 
+            if (geteuid() != 0) {
+                /* Stock / SideStore build: no hotspot, BTstack, Sileo, or saved-car
+                 * setup is required before choosing a mode. */
+                self.headlineLabel.text = @"iPlay";
+                self.subtitleLabel.text = @"Run real CarPlay on this iPhone through LocalDevVPN,\nor use another iPhone as the source or receiver.";
+                [self.primaryButton setTitle:@"Start CarPlay" forState:UIControlStateNormal];
+                self.secondaryButton.hidden = YES;
+                self.tertiaryButton.hidden = YES;
+                self.carHintLabel.text = @"A → A uses LocalDevVPN + Developer Mode pairing.";
+                self.carHintLabel.hidden = NO;
+                break;
+            }
+
+            BOOL apReady = [self.cars apReady];
             if (!apReady) {
-                /* First-run: Wi-Fi setup is the headline CTA. */
+                /* Jailbreak legacy receiver mode only. */
                 self.headlineLabel.text = @"Welcome";
                 self.subtitleLabel.text = @"Before connecting your iPhone, we need to know\nyour iPad's hotspot details.";
-
                 [self.primaryButton setTitle:@"Set Up Wi-Fi" forState:UIControlStateNormal];
-
                 [self.tertiaryButton setTitle:@"My Cars  ›" forState:UIControlStateNormal];
                 self.tertiaryButton.hidden = NO;
-
                 self.carHintLabel.text = @"";
                 self.carHintLabel.hidden = YES;
             } else {
@@ -2835,8 +2845,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 } else if (!self.baaReady) {
                     self.headlineLabel.text = @"Internet connection required";
                     self.subtitleLabel.text = self.baaError.length
-                        ? @"Showcase could not prepare CarPlay authentication.\nConnect to the internet, then retry."
-                        : @"Showcase needs internet once before Personal Hotspot starts.";
+                        ? @"iPlay could not prepare CarPlay authentication.\nConnect to the internet, then retry."
+                        : @"iPlay needs internet once before Personal Hotspot starts.";
                     [self.primaryButton setTitle:@"Retry Authentication"
                                        forState:UIControlStateNormal];
                 } else {
@@ -2849,10 +2859,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 NSString *wifiTitle = [NSString stringWithFormat:@"Wi-Fi: %@", self.cars.apSSID];
                 [self.secondaryButton setTitle:wifiTitle forState:UIControlStateNormal];
                 self.secondaryButton.hidden = NO;
-
                 [self.tertiaryButton setTitle:@"My Cars  ›" forState:UIControlStateNormal];
                 self.tertiaryButton.hidden = NO;
-
                 self.carHintLabel.text = sel
                     ? [NSString stringWithFormat:@"Currently using: %@", sel.name]
                     : @"";
@@ -2883,13 +2891,18 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             break;
 
         case StateAwaitingPhone:
-            self.headlineLabel.text = @"Connect from your iPhone";
-            /* subtitleLabel.text is updated dynamically by status messages */
-            if (self.subtitleLabel.text.length == 0 ||
-                ![self.subtitleLabel.text containsString:@"\n"]) {
-                self.subtitleLabel.text = sel
-                    ? [NSString stringWithFormat:@"Settings › General › CarPlay\nSelect %@", sel.name]
-                    : @"Settings › General › CarPlay";
+            if (geteuid() != 0 && self.sideStoreMode == 0) {
+                self.headlineLabel.text = @"Starting CarPlay on this iPhone";
+                self.subtitleLabel.text = @"Keep LocalDevVPN enabled. If this is the first run, approve iPlay under Settings › Privacy & Security › Developer Mode when prompted.";
+            } else {
+                self.headlineLabel.text = @"Connect from your iPhone";
+                /* A → B receiver mode behaves like an external head unit. */
+                if (self.subtitleLabel.text.length == 0 ||
+                    ![self.subtitleLabel.text containsString:@"\n"]) {
+                    self.subtitleLabel.text = sel
+                        ? [NSString stringWithFormat:@"Settings › General › CarPlay\nSelect %@", sel.name]
+                        : @"Settings › General › CarPlay";
+                }
             }
             self.spinner.hidden = NO; [self.spinner startAnimating];
             [self.secondaryButton setTitle:@"Cancel" forState:UIControlStateNormal];
