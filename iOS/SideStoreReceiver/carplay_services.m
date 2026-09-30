@@ -6129,6 +6129,42 @@ int main(int argc, char *argv[]) {
     }
     TXTRecordDeallocate(&raopTxt);
 
+    /* SideStore peer discovery. This is not part of CarPlay itself; it lets
+     * another iPlay installation find this receiver without asking the user
+     * to type a link-local IPv6 address. */
+    printf("[MDNS] Registering _iplay-carplay._tcp peer service...\n");
+    DNSServiceRef iPlayRef = NULL;
+    TXTRecordRef iPlayTxt;
+    TXTRecordCreate(&iPlayTxt, 0, NULL);
+    const char *peerVersion = "1";
+    const char *peerRole = "headunit";
+    const char *peerProtocol = "carplay";
+    TXTRecordSetValue(&iPlayTxt, "txtvers", 1, peerVersion);
+    TXTRecordSetValue(&iPlayTxt, "role", (uint8_t)strlen(peerRole), peerRole);
+    TXTRecordSetValue(&iPlayTxt, "protocol", (uint8_t)strlen(peerProtocol), peerProtocol);
+    err = DNSServiceRegister(
+        &iPlayRef, 0, br,
+        g_instance_name, "_iplay-carplay._tcp",
+        NULL, SRV_HOSTNAME, htons(AIRPLAY_PORT),
+        TXTRecordGetLength(&iPlayTxt), TXTRecordGetBytesPtr(&iPlayTxt),
+        reg_callback, NULL);
+    if (err != kDNSServiceErr_NoError) {
+        printf("[MDNS] _iplay-carplay._tcp register FAILED: %d\n", err);
+    } else {
+        DNSServiceProcessResult(iPlayRef);
+        printf("[MDNS] _iplay-carplay._tcp registered\n");
+        dispatch_async(dispatch_get_global_queue(0, 0), ^{
+            while (1) {
+                DNSServiceErrorType e = DNSServiceProcessResult(iPlayRef);
+                if (e != kDNSServiceErr_NoError) {
+                    printf("[MDNS] _iplay-carplay._tcp error: %d\n", e);
+                    break;
+                }
+            }
+        });
+    }
+    TXTRecordDeallocate(&iPlayTxt);
+
     /* iOS can join the Personal Hotspot after our first unsolicited mDNS
      * advertisements have already gone out. Keep nudging mDNSResponder to
      * re-announce _airplay/_raop while the phone is expected to join. */
