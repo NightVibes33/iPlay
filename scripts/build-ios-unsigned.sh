@@ -63,7 +63,7 @@ if "al_carkit_proxy_run" not in s:
 p.write_text(s)
 PY
 
-export DEVELOPER_DIR="\${DEVELOPER_DIR:-$(xcode-select -p)}"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 export IPHONEOS_DEPLOYMENT_TARGET=16.0
 source "$HOME/.cargo/env" 2>/dev/null || true
 rustup target add aarch64-apple-ios
@@ -74,30 +74,30 @@ rustup target add aarch64-apple-ios
 cp "$AIRCARD/rust-core/target/aarch64-apple-ios/release/libairlift_ffi.a" "$OUT/libairlift_ffi.a"
 
 echo "[2/6] Compile embedded CarPlay receiver"
-"$CLANG" "\${COMMON[@]}" -fobjc-arc -Dmain=iPlayCarPlayServiceMain \
+"$CLANG" "${COMMON[@]}" -fobjc-arc -Dmain=iPlayCarPlayServiceMain \
   -I"$SRC" -I"$SRC/vendor/monocypher" -I"$SRC/vendor/libtommath" \
   -c "$SRC/carplay_services.m" -o "$OUT/carplay_services.o"
 
-"$CLANG" "\${COMMON[@]}" \
+"$CLANG" "${COMMON[@]}" \
   -I"$SRC" -I"$SRC/vendor/monocypher" -I"$SRC/vendor/libtommath" \
   -c "$SRC/carplay_pair.c" -o "$OUT/carplay_pair.o"
 
-"$CLANG" "\${COMMON[@]}" -I"$SRC/vendor/monocypher" \
+"$CLANG" "${COMMON[@]}" -I"$SRC/vendor/monocypher" \
   -c "$SRC/vendor/monocypher/monocypher.c" -o "$OUT/monocypher.o"
 
-"$CLANG" "\${COMMON[@]}" -I"$SRC/vendor/monocypher" \
+"$CLANG" "${COMMON[@]}" -I"$SRC/vendor/monocypher" \
   -c "$SRC/vendor/monocypher/monocypher-ed25519.c" -o "$OUT/monocypher-ed25519.o"
 
-"$CLANG" "\${COMMON[@]}" -I"$SRC/vendor/libtommath" \
+"$CLANG" "${COMMON[@]}" -I"$SRC/vendor/libtommath" \
   -c "$SRC/vendor/libtommath/tommath.c" -o "$OUT/tommath.o"
 
 echo "[3/6] Compile LocalDevVPN CarKit / wired-iAP2 bridge"
-"$CLANG" "\${COMMON[@]}" -fobjc-arc \
+"$CLANG" "${COMMON[@]}" -fobjc-arc \
   -I"$SRC" \
   -c "$SRC/local_carkit.m" -o "$OUT/local_carkit.o"
 
 echo "[4/6] Link iPlay + receiver + LocalDevVPN core into one SideStore executable"
-"$CLANG" "\${COMMON[@]}" -fobjc-arc \
+"$CLANG" "${COMMON[@]}" -fobjc-arc \
   "$SRC/iPlay.m" "$SRC/SideStoreBridge.m" \
   "$OUT/local_carkit.o" \
   "$OUT/carplay_services.o" "$OUT/carplay_pair.o" \
