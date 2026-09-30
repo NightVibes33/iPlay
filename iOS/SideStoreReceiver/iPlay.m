@@ -3820,6 +3820,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)applyDiagnosticsEnabled:(BOOL)enabled {
+    if (geteuid() != 0) {
+        _diagnosticsEnabled = NO;
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:DIAGNOSTICS_ENABLED_KEY];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        ip_log("[SIDESTORE] jailbreak-only diagnostics are unavailable");
+        return;
+    }
     _diagnosticsEnabled = enabled;
     [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:DIAGNOSTICS_ENABLED_KEY];
     [[NSUserDefaults standardUserDefaults] synchronize];
@@ -4249,7 +4256,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)exportDiagnostics {
     UIAlertController *busy = [UIAlertController
         alertControllerWithTitle:@"Preparing Logs"
-        message:@"Collecting Showcase diagnostics..."
+        message:@"Collecting iPlay logs..."
         preferredStyle:UIAlertControllerStyleAlert];
     UIViewController *presenter = self.vc.presentedViewController ?: self.vc;
     [presenter presentViewController:busy animated:YES completion:nil];
@@ -4271,6 +4278,23 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)showAbout {
+    if (geteuid() != 0) {
+        NSString *msg = [NSString stringWithFormat:
+            @"Version %s\nby %s\n\nSideStore build\nA → A: LocalDevVPN + Developer Mode pairing\nA → B: wireless receiver/source modes\n\nDuring CarPlay, tap with three fingers to show Info and Stop.",
+            APP_VERSION, APP_AUTHOR];
+        UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
+            message:msg preferredStyle:UIAlertControllerStyleAlert];
+        [ac addAction:[UIAlertAction actionWithTitle:@"Send Log"
+            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
+                [self exportDiagnostics];
+            }]];
+        [ac addAction:[UIAlertAction actionWithTitle:@"Done"
+            style:UIAlertActionStyleCancel handler:nil]];
+        UIViewController *p = self.vc.presentedViewController ?: self.vc;
+        [p presentViewController:ac animated:YES completion:nil];
+        return;
+    }
+
     NSString *msg = [NSString stringWithFormat:@"Version %s\nby %s\n\nDuring CarPlay, tap with three fingers to show Info and Stop.\nDiagnostics: %@",
                      APP_VERSION, APP_AUTHOR,
                      self.diagnosticsEnabled ? @"On" : @"Off"];
@@ -4291,7 +4315,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         dump.enabled = NO;
         [ac addAction:dump];
     } else if (!tcpdump_tool_path()) {
-        [ac addAction:[UIAlertAction actionWithTitle:@"Install tcpdump for Network Dump"
+        [ac addAction:[UIAlertAction actionWithTitle:@"Network Dump Unavailable"
             style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
                 self.tcpdumpMissingPromptShown = NO;
                 [self promptInstallTcpdumpIfNeeded];
@@ -4303,35 +4327,20 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 ? @"Send Network Dump" : @"Start Network Dump");
         UIAlertAction *dump = [UIAlertAction actionWithTitle:title
             style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-                [self exportNetworkDump];
+                [self handleNetworkDumpAction];
             }];
-        dump.enabled = YES;
         [ac addAction:dump];
     }
 
-    [ac addAction:[UIAlertAction actionWithTitle:@"Clear Logs and Dumps"
+    [ac addAction:[UIAlertAction actionWithTitle:@"Clear Logs"
         style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a) {
-            UIAlertController *confirm = [UIAlertController alertControllerWithTitle:@"Clear Logs and Dumps?"
-                message:@"This removes saved logs, diagnostics archives, HCI dumps, and network pcaps from this device."
-                preferredStyle:UIAlertControllerStyleAlert];
-            [confirm addAction:[UIAlertAction actionWithTitle:@"Clear"
-                style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *b) {
-                    [self clearLogsAndDumps];
-                }]];
-            [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                style:UIAlertActionStyleCancel handler:nil]];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                [[self topPresenter] presentViewController:confirm animated:YES completion:nil];
-            });
+            [self clearLogsAndDumps];
         }]];
-
-    [ac addAction:[UIAlertAction actionWithTitle:@"OK"
-        style:UIAlertActionStyleDefault handler:nil]];
+    [ac addAction:[UIAlertAction actionWithTitle:@"Done"
+        style:UIAlertActionStyleCancel handler:nil]];
     UIViewController *p = self.vc.presentedViewController ?: self.vc;
     [p presentViewController:ac animated:YES completion:nil];
 }
-
 /* ─── IPC listener ─────────────────────────────────────────── */
 
 - (BOOL)startIPCListener {
