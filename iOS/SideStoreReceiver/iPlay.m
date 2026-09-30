@@ -108,6 +108,12 @@ static void ip_log_open(void) {
 #define APP_VERSION       "1.0 beta 3-1 (skywalk)"
 #else
 #define APP_VERSION       "0.1 SideStore"
+
+/* This target is built exclusively for stock SideStore-style sideloading.
+ * Never infer jailbreak mode from UID: that caused legacy Showcase/Sileo
+ * diagnostics and hotspot setup to leak into normal installs. */
+static inline BOOL iPlayIsStockSideStoreBuild(void) { return YES; }
+
 #endif
 #define APP_AUTHOR        "NightVibes33 / Showcase core by Amine Rostane"
 static const char *iplay_ipc_socket_path(void) {
@@ -2386,7 +2392,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.bgTask = UIBackgroundTaskInvalid;
     self.tcpdumpPid = 0;
     self.tcpdumpMissingPromptShown = NO;
-    _diagnosticsEnabled = (geteuid() == 0)
+    _diagnosticsEnabled = (!iPlayIsStockSideStoreBuild())
         ? [[NSUserDefaults standardUserDefaults] boolForKey:DIAGNOSTICS_ENABLED_KEY]
         : NO;
     self.cars = [[CarStore alloc] init];
@@ -2421,7 +2427,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         name:UIApplicationWillEnterForegroundNotification object:nil];
 
     [self transitionTo:StateIdle];
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         self.baaReady = YES;
         self.baaLoading = NO;
         self.baaError = nil;
@@ -2810,7 +2816,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             self.primaryButton.enabled = YES;
             self.primaryButton.alpha = 1.0;
 
-            if (geteuid() != 0) {
+            if (iPlayIsStockSideStoreBuild()) {
                 /* Stock / SideStore build: no hotspot, jailbreak tooling, or saved-car
                  * setup is required before choosing a mode. */
                 self.headlineLabel.text = @"iPlay";
@@ -2891,7 +2897,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             break;
 
         case StateAwaitingPhone:
-            if (geteuid() != 0 && self.sideStoreMode == 0) {
+            if (iPlayIsStockSideStoreBuild() && self.sideStoreMode == 0) {
                 self.headlineLabel.text = @"Starting CarPlay on this iPhone";
                 self.subtitleLabel.text = @"Keep LocalDevVPN enabled. If this is the first run, approve iPlay under Settings › Privacy & Security › Developer Mode when prompted.";
             } else {
@@ -2990,7 +2996,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)primaryTapped {
     switch (self.state) {
         case StateIdle:
-            if (geteuid() != 0) [self showSideStoreModePicker];
+            if (iPlayIsStockSideStoreBuild()) [self showSideStoreModePicker];
             else if ([self.cars apReady]) [self attemptStart];
             else                     [self showWifiSetup];
             break;
@@ -3053,10 +3059,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)attemptStart {
     /* Jailbreak mode still needs the receiver hotspot. SideStore modes do not. */
-    if (geteuid() == 0 && ![self.cars apReady]) { [self showWifiSetup]; return; }
+    if (!iPlayIsStockSideStoreBuild() && ![self.cars apReady]) { [self showWifiSetup]; return; }
     /* A SideStore A->A receiver is this app itself; it must not require a
      * legacy saved vehicle entry before the local source stack can start. */
-    if (geteuid() == 0 && self.cars.cars.count == 0) return;
+    if (!iPlayIsStockSideStoreBuild() && self.cars.cars.count == 0) return;
     if (!self.baaReady) {
         [self preheatBAA];
         return;
@@ -3071,7 +3077,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
            flowName.UTF8String,
            flowSSID.UTF8String);
     self.bluetoothHandedOff = NO;
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         if (self.sideStoreMode == 0) {
             /* A -> A is local: there is no physical Bluetooth bootstrap. */
             [self transitionTo:StatePreparingNet];
@@ -3146,7 +3152,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
            geteuid(), receiverName.UTF8String, receiverSSID.UTF8String);
     self.bluetoothRetryAttempted = NO;
 
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         BOOL privateBluetooth = iPlayPreparePrivateBluetooth();
         ip_log("[SIDESTORE] private Bluetooth bootstrap available=%d", privateBluetooth ? 1 : 0);
         [self transitionTo:StatePreparingNet];
@@ -3369,7 +3375,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
      * file at launch, so this has bounded storage cost and cannot silently
      * erase the evidence needed to diagnose a failed session.
      */
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         if (!self.inProcessServiceStarted) {
             self.inProcessServiceStarted = YES;
             NSString *nameCopy = [receiverName copy];
@@ -3500,7 +3506,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)stopFlow {
-    if (geteuid() != 0) iPlayStopRequestedCarPlaySession();
+    if (iPlayIsStockSideStoreBuild()) iPlayStopRequestedCarPlaySession();
     [self endAWDLSuppression];
     [self stopNetworkDumpCaptureWithReason:@"user cancelled / stopping flow"];
     [self endBackgroundTask];
@@ -3820,7 +3826,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)applyDiagnosticsEnabled:(BOOL)enabled {
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         _diagnosticsEnabled = NO;
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:DIAGNOSTICS_ENABLED_KEY];
         [[NSUserDefaults standardUserDefaults] synchronize];
@@ -3966,25 +3972,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)promptInstallTcpdumpIfNeeded {
-    /* tcpdump is a jailbreak-only diagnostic convenience from Showcase.
-     * A stock SideStore build must never ask for external jailbreak-only packages. */
-    if (geteuid() != 0) {
-        ip_log("[SIDESTORE] tcpdump unavailable; diagnostics remain disabled");
-        self.diagnosticsEnabled = NO;
-        return;
-    }
-    if (self.tcpdumpMissingPromptShown) return;
+    /* Stock SideStore build: no package-manager dependency, no Sileo prompt,
+     * no jailbreak diagnostic installation flow. */
     self.tcpdumpMissingPromptShown = YES;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIAlertController *ac = [UIAlertController
-            alertControllerWithTitle:@"Network Dump Unavailable"
-            message:@"Optional jailbreak diagnostics are unavailable. CarPlay itself can still run."
-            preferredStyle:UIAlertControllerStyleAlert];
-        [ac addAction:[UIAlertAction actionWithTitle:@"OK"
-            style:UIAlertActionStyleCancel handler:nil]];
-        UIViewController *p = self.vc.presentedViewController ?: self.vc;
-        [p presentViewController:ac animated:YES completion:nil];
-    });
+    self.diagnosticsEnabled = NO;
+    ip_log("[SIDESTORE] packet capture diagnostics disabled in stock build");
 }
 
 - (void)startNetworkDumpCapture {
@@ -4278,7 +4270,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)showAbout {
-    if (geteuid() != 0) {
+    if (iPlayIsStockSideStoreBuild()) {
         NSString *msg = [NSString stringWithFormat:
             @"Version %s\nby %s\n\nSideStore build\nA → A: LocalDevVPN + Developer Mode pairing\nA → B: wireless receiver/source modes\n\nDuring CarPlay, tap with three fingers to show Info and Stop.",
             APP_VERSION, APP_AUTHOR];
