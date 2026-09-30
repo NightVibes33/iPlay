@@ -1,7 +1,7 @@
-name: Publish download site
+name: Publish iPlay site
 on:
   push:
-    branches: [main]
+    branches: [temp/ios-carplay-headunit]
     paths: ['site/**', 'scripts/build_site.py', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
