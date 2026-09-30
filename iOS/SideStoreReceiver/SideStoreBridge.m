@@ -1,9 +1,16 @@
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
 #import <dlfcn.h>
+#include <dns_sd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 
 static id gSessionRequestClient = nil;
 static id gSessionRequestHost = nil;
+static NSString *gSessionRequestIdentifier = nil;
 
 static BOOL iPlayLoadFramework(NSString *path) {
     return dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL) != NULL;
@@ -52,63 +59,87 @@ static id iPlayCreateSessionHost(NSString *displayName,
     Class hostClass = NSClassFromString(@"CARSessionRequestHost");
     if (!hostClass) return nil;
 
-    id host = ((id (*)(id, SEL))objc_msgSend)(hostClass, @selector(alloc));
-    SEL initSel = NSSelectorFromString(@"initWithDisplayName:wiredIPv6Addresses:wirelessIPv6Addresses:port:carplayWiFiUUID:deviceIdentifier:publicKey:sourceVersion:supportsMutualAuthentication:authenticationCertificateSerial:pairedVehicleIdentifier:wiredCarPlaySimulator:remoteDeviceConnected:displayScaleMode:zoomFactor:");
-    if (![host respondsToSelector:initSel]) return nil;
-
-    typedef id (*InitHostFn)(id, SEL, id, id, id, long long, id, id, id, id, BOOL, id, id, BOOL, BOOL, long long, id);
-    InitHostFn initHost = (InitHostFn)objc_msgSend;
+    NSString *name = displayName.length ? displayName : @"iPlay";
+    NSArray *wired = wiredAddresses ?: @[];
+    NSArray *wireless = wirelessAddresses ?: @[];
     NSString *wifiUUID = [NSUUID UUID].UUIDString;
     NSString *deviceID = @"90:B9:31:AC:86:A0";
     NSString *publicKey = @"1b15f0ad62c894721c4097651801e62845451a183c8df8af7d6b20430823586f";
-    return initHost(host, initSel,
-                    displayName ?: @"iPlay",
-                    wiredAddresses ?: @[],
-                    wirelessAddresses ?: @[],
-                    (long long)port,
-                    wifiUUID,
-                    deviceID,
-                    publicKey,
-                    @"509.0",
-                    NO,
-                    nil,
-                    [NSUUID UUID],
-                    simulator,
-                    remoteConnected,
-                    0,
-                    @1.0);
+    NSString *sourceVersion = @"509.0";
+    NSUUID *pairedIdentifier = [NSUUID UUID];
+
+    id host = ((id (*)(id, SEL))objc_msgSend)(hostClass, @selector(alloc));
+
+    SEL newest = NSSelectorFromString(@"initWithDisplayName:wiredIPv6Addresses:wirelessIPv6Addresses:port:carplayWiFiUUID:deviceIdentifier:publicKey:sourceVersion:supportsMutualAuthentication:authenticationCertificateSerial:pairedVehicleIdentifier:wiredCarPlaySimulator:remoteDeviceConnected:displayScaleMode:zoomFactor:");
+    if ([host respondsToSelector:newest]) {
+        typedef id (*Fn)(id, SEL, id, id, id, long long, id, id, id, id, BOOL, id, id, BOOL, BOOL, long long, id);
+        return ((Fn)objc_msgSend)(host, newest, name, wired, wireless, (long long)port,
+                                 wifiUUID, deviceID, publicKey, sourceVersion, NO, nil,
+                                 pairedIdentifier, simulator, remoteConnected, 0, @1.0);
+    }
+
+    SEL remote = NSSelectorFromString(@"initWithDisplayName:wiredIPv6Addresses:wirelessIPv6Addresses:port:carplayWiFiUUID:deviceIdentifier:publicKey:sourceVersion:supportsMutualAuthentication:authenticationCertificateSerial:pairedVehicleIdentifier:wiredCarPlaySimulator:remoteDeviceConnected:");
+    if ([host respondsToSelector:remote]) {
+        typedef id (*Fn)(id, SEL, id, id, id, long long, id, id, id, id, BOOL, id, id, BOOL, BOOL);
+        return ((Fn)objc_msgSend)(host, remote, name, wired, wireless, (long long)port,
+                                 wifiUUID, deviceID, publicKey, sourceVersion, NO, nil,
+                                 pairedIdentifier, simulator, remoteConnected);
+    }
+
+    SEL legacy = NSSelectorFromString(@"initWithDisplayName:wiredIPv6Addresses:wirelessIPv6Addresses:port:carplayWiFiUUID:deviceIdentifier:publicKey:sourceVersion:supportsMutualAuthentication:authenticationCertificateSerial:pairedVehicleIdentifier:wiredCarPlaySimulator:");
+    if ([host respondsToSelector:legacy]) {
+        typedef id (*Fn)(id, SEL, id, id, id, long long, id, id, id, id, BOOL, id, id, BOOL);
+        return ((Fn)objc_msgSend)(host, legacy, name, wired, wireless, (long long)port,
+                                 wifiUUID, deviceID, publicKey, sourceVersion, NO, nil,
+                                 pairedIdentifier, simulator);
+    }
+
+    return nil;
 }
 
 static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
     if (!host) return NO;
+    if (!iPlayLoadFramework(@"/System/Library/PrivateFrameworks/CarKit.framework/CarKit")) return NO;
     Class clientClass = NSClassFromString(@"CARSessionRequestClient");
     if (!clientClass) return NO;
+
     id client = ((id (*)(id, SEL))objc_msgSend)(clientClass, @selector(alloc));
     client = ((id (*)(id, SEL))objc_msgSend)(client, @selector(init));
     if (!client) return NO;
 
     if (localSimulator) {
-        SEL advertise = NSSelectorFromString(@"startAdvertisingCarPlayControlForUSBWithHost:");
-        if ([client respondsToSelector:advertise]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(client, advertise, host);
+        SEL withHost = NSSelectorFromString(@"startAdvertisingCarPlayControlForUSBWithHost:");
+        SEL plain = NSSelectorFromString(@"startAdvertisingCarPlayControlForUSB");
+        if ([client respondsToSelector:withHost]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(client, withHost, host);
+        } else if ([client respondsToSelector:plain]) {
+            ((void (*)(id, SEL))objc_msgSend)(client, plain);
         }
     } else {
         SEL wifiUUIDSel = NSSelectorFromString(@"carplayWiFiUUID");
         id wifiUUID = [host respondsToSelector:wifiUUIDSel]
             ? ((id (*)(id, SEL))objc_msgSend)(host, wifiUUIDSel) : nil;
-        SEL advertise = NSSelectorFromString(@"startAdvertisingCarPlayControlForWiFiUUID:host:");
-        if (wifiUUID && [client respondsToSelector:advertise]) {
-            ((void (*)(id, SEL, id, id))objc_msgSend)(client, advertise, wifiUUID, host);
+        SEL withHost = NSSelectorFromString(@"startAdvertisingCarPlayControlForWiFiUUID:host:");
+        SEL plain = NSSelectorFromString(@"startAdvertisingCarPlayControlForWiFiUUID:");
+        if (wifiUUID && [client respondsToSelector:withHost]) {
+            ((void (*)(id, SEL, id, id))objc_msgSend)(client, withHost, wifiUUID, host);
+        } else if (wifiUUID && [client respondsToSelector:plain]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(client, plain, wifiUUID);
         }
     }
 
     SEL start = NSSelectorFromString(@"startSessionWithHost:requestIdentifier:completion:");
     if (![client respondsToSelector:start]) return NO;
-    ((void (*)(id, SEL, id, id, id))objc_msgSend)(
-        client, start, host, [NSUUID UUID].UUIDString, nil);
+
+    NSString *requestID = [NSUUID UUID].UUIDString;
+    void (^completion)(void) = ^{
+        NSLog(@"[iPlay] CarKit accepted session request %@", requestID);
+    };
+    ((void (*)(id, SEL, id, id, id))objc_msgSend)(client, start, host, requestID, completion);
 
     gSessionRequestClient = client;
     gSessionRequestHost = host;
+    gSessionRequestIdentifier = requestID;
     return YES;
 }
 
@@ -123,13 +154,172 @@ BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NS
     return iPlayStartSessionWithHost(host, NO);
 }
 
+typedef struct {
+    BOOL found;
+    uint32_t interfaceIndex;
+    char serviceName[256];
+    char regtype[256];
+    char domain[256];
+} iPlayBrowseContext;
+
+typedef struct {
+    BOOL found;
+    uint32_t interfaceIndex;
+    uint16_t port;
+    char hostTarget[1024];
+} iPlayResolveContext;
+
+static void DNSSD_API iPlayBrowseCallback(DNSServiceRef sdRef,
+                                           DNSServiceFlags flags,
+                                           uint32_t interfaceIndex,
+                                           DNSServiceErrorType errorCode,
+                                           const char *serviceName,
+                                           const char *regtype,
+                                           const char *replyDomain,
+                                           void *context) {
+    (void)sdRef;
+    if (errorCode != kDNSServiceErr_NoError || !(flags & kDNSServiceFlagsAdd)) return;
+    iPlayBrowseContext *ctx = context;
+    if (!ctx || ctx->found) return;
+    ctx->found = YES;
+    ctx->interfaceIndex = interfaceIndex;
+    strlcpy(ctx->serviceName, serviceName ?: "", sizeof(ctx->serviceName));
+    strlcpy(ctx->regtype, regtype ?: "_iplay-carplay._tcp", sizeof(ctx->regtype));
+    strlcpy(ctx->domain, replyDomain ?: "local.", sizeof(ctx->domain));
+}
+
+static void DNSSD_API iPlayResolveCallback(DNSServiceRef sdRef,
+                                            DNSServiceFlags flags,
+                                            uint32_t interfaceIndex,
+                                            DNSServiceErrorType errorCode,
+                                            const char *fullname,
+                                            const char *hosttarget,
+                                            uint16_t port,
+                                            uint16_t txtLen,
+                                            const unsigned char *txtRecord,
+                                            void *context) {
+    (void)sdRef; (void)flags; (void)fullname; (void)txtLen; (void)txtRecord;
+    if (errorCode != kDNSServiceErr_NoError) return;
+    iPlayResolveContext *ctx = context;
+    if (!ctx || ctx->found) return;
+    ctx->found = YES;
+    ctx->interfaceIndex = interfaceIndex;
+    ctx->port = ntohs(port);
+    strlcpy(ctx->hostTarget, hosttarget ?: "", sizeof(ctx->hostTarget));
+}
+
+static BOOL iPlayProcessDNSService(DNSServiceRef ref, NSTimeInterval timeout) {
+    if (!ref) return NO;
+    int fd = DNSServiceRefSockFD(ref);
+    if (fd < 0) return NO;
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(fd, &readSet);
+    struct timeval tv;
+    tv.tv_sec = (int)timeout;
+    tv.tv_usec = (int)((timeout - floor(timeout)) * 1000000.0);
+    int ready = select(fd + 1, &readSet, NULL, NULL, &tv);
+    if (ready <= 0 || !FD_ISSET(fd, &readSet)) return NO;
+    return DNSServiceProcessResult(ref) == kDNSServiceErr_NoError;
+}
+
+static NSString *iPlayIPv6ForHost(const char *host, uint32_t interfaceIndex) {
+    if (!host || !*host) return nil;
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_flags = AI_ADDRCONFIG;
+
+    struct addrinfo *result = NULL;
+    if (getaddrinfo(host, NULL, &hints, &result) != 0 || !result) return nil;
+
+    NSString *answer = nil;
+    for (struct addrinfo *it = result; it; it = it->ai_next) {
+        char text[INET6_ADDRSTRLEN + IF_NAMESIZE + 2] = {0};
+        if (it->ai_family == AF_INET6) {
+            struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)it->ai_addr;
+            char address[INET6_ADDRSTRLEN] = {0};
+            if (!inet_ntop(AF_INET6, &a6->sin6_addr, address, sizeof(address))) continue;
+            uint32_t scope = a6->sin6_scope_id ?: interfaceIndex;
+            if (IN6_IS_ADDR_LINKLOCAL(&a6->sin6_addr) && scope) {
+                char ifname[IF_NAMESIZE] = {0};
+                if (if_indextoname(scope, ifname)) {
+                    snprintf(text, sizeof(text), "%s%%%s", address, ifname);
+                } else {
+                    snprintf(text, sizeof(text), "%s%%%u", address, scope);
+                }
+            } else {
+                strlcpy(text, address, sizeof(text));
+            }
+            answer = [NSString stringWithUTF8String:text];
+            break;
+        }
+        if (it->ai_family == AF_INET && !answer) {
+            struct sockaddr_in *a4 = (struct sockaddr_in *)it->ai_addr;
+            char address[INET_ADDRSTRLEN] = {0};
+            if (!inet_ntop(AF_INET, &a4->sin_addr, address, sizeof(address))) continue;
+            answer = [NSString stringWithFormat:@"::ffff:%s", address];
+        }
+    }
+    freeaddrinfo(result);
+    return answer;
+}
+
+NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
+    if (timeout <= 0) timeout = 5.0;
+
+    iPlayBrowseContext browse = {0};
+    DNSServiceRef browseRef = NULL;
+    DNSServiceErrorType err = DNSServiceBrowse(&browseRef, 0, 0,
+                                               "_iplay-carplay._tcp", "local.",
+                                               iPlayBrowseCallback, &browse);
+    if (err != kDNSServiceErr_NoError || !browseRef) return nil;
+
+    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + timeout;
+    while (!browse.found && CFAbsoluteTimeGetCurrent() < deadline) {
+        NSTimeInterval left = deadline - CFAbsoluteTimeGetCurrent();
+        if (!iPlayProcessDNSService(browseRef, MIN(left, 0.75))) continue;
+    }
+    DNSServiceRefDeallocate(browseRef);
+    if (!browse.found) return nil;
+
+    iPlayResolveContext resolved = {0};
+    DNSServiceRef resolveRef = NULL;
+    err = DNSServiceResolve(&resolveRef, 0, browse.interfaceIndex,
+                            browse.serviceName, browse.regtype, browse.domain,
+                            iPlayResolveCallback, &resolved);
+    if (err != kDNSServiceErr_NoError || !resolveRef) return nil;
+
+    deadline = CFAbsoluteTimeGetCurrent() + MAX(1.0, timeout * 0.5);
+    while (!resolved.found && CFAbsoluteTimeGetCurrent() < deadline) {
+        NSTimeInterval left = deadline - CFAbsoluteTimeGetCurrent();
+        if (!iPlayProcessDNSService(resolveRef, MIN(left, 0.75))) continue;
+    }
+    DNSServiceRefDeallocate(resolveRef);
+    if (!resolved.found) return nil;
+
+    return iPlayIPv6ForHost(resolved.hostTarget, resolved.interfaceIndex);
+}
+
 void iPlayStopRequestedCarPlaySession(void) {
     if (gSessionRequestClient) {
         SEL cancel = NSSelectorFromString(@"cancelRequests");
         if ([gSessionRequestClient respondsToSelector:cancel]) {
             ((void (*)(id, SEL))objc_msgSend)(gSessionRequestClient, cancel);
         }
+
+        SEL stopped = NSSelectorFromString(@"stoppedSessionForHostIdentifier:");
+        SEL paired = NSSelectorFromString(@"pairedVehicleIdentifier");
+        if ([gSessionRequestClient respondsToSelector:stopped] &&
+            [gSessionRequestHost respondsToSelector:paired]) {
+            id identifier = ((id (*)(id, SEL))objc_msgSend)(gSessionRequestHost, paired);
+            if (identifier) {
+                ((void (*)(id, SEL, id))objc_msgSend)(gSessionRequestClient, stopped, identifier);
+            }
+        }
     }
     gSessionRequestClient = nil;
     gSessionRequestHost = nil;
+    gSessionRequestIdentifier = nil;
 }
