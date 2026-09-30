@@ -60,11 +60,19 @@ extern void iPlayLocalDevVPNCarPlayDidFail(const char *reason);
 
 static atomic_bool g_local_running = false;
 static atomic_bool g_local_stop = false;
+static atomic_bool g_local_failure_reported = false;
 static int g_control_fd = -1;
 static int g_listener_fd = -1;
 static DNSServiceRef g_pair_service = NULL;
 
 static pthread_mutex_t g_local_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void local_report_failure_once(const char *reason) {
+    bool expected = false;
+    if (atomic_compare_exchange_strong(&g_local_failure_reported, &expected, true)) {
+        iPlayLocalDevVPNCarPlayDidFail(reason ?: "LocalDevVPN A-to-A failed");
+    }
+}
 
 static void local_log(const char *fmt, ...) {
     va_list ap;
@@ -829,7 +837,7 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
                     g_listener_fd = -1;
                 }
                 if (!atomic_load(&g_local_stop)) {
-                    iPlayLocalDevVPNCarPlayDidFail(
+                    local_report_failure_once(
                         failure.length ? failure.UTF8String :
                         "LocalDevVPN CarKit transport ended before iAP2 connected");
                 }
@@ -839,12 +847,14 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
         struct sockaddr_in peer;
         socklen_t peerLen = sizeof(peer);
         int control = accept(listener, (struct sockaddr *)&peer, &peerLen);
-        close(listener);
-        g_listener_fd = -1;
+        if (g_listener_fd == listener) {
+            close(listener);
+            g_listener_fd = -1;
+        }
         if (control < 0) {
             local_log("CarKit proxy accept failed: %s", strerror(errno));
             if (!atomic_load(&g_local_stop)) {
-                iPlayLocalDevVPNCarPlayDidFail("LocalDevVPN CarKit proxy did not attach to iAP2");
+                local_report_failure_once("LocalDevVPN CarKit proxy did not attach to iAP2");
             }
             atomic_store(&g_local_running, false);
             return;
@@ -855,7 +865,7 @@ static void local_worker(NSString *displayName, NSInteger airPlayPort) {
         BOOL ok = run_iap2(control, displayName, airPlayPort);
         local_log("local wired CarPlay control ended ok=%d", ok ? 1 : 0);
         if (!ok && !atomic_load(&g_local_stop)) {
-            iPlayLocalDevVPNCarPlayDidFail("LocalDevVPN wired iAP2 negotiation failed");
+            local_report_failure_once("LocalDevVPN wired iAP2 negotiation failed");
         }
         shutdown(control, SHUT_RDWR);
         close(control);
@@ -868,6 +878,7 @@ BOOL iPlayStartLocalDevVPNCarPlay(NSString *displayName, NSInteger airPlayPort) 
     bool expected = false;
     if (!atomic_compare_exchange_strong(&g_local_running, &expected, true)) return YES;
     atomic_store(&g_local_stop, false);
+    atomic_store(&g_local_failure_reported, false);
     NSString *nameCopy = [displayName.length ? displayName : @"iPlay" copy];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         local_worker(nameCopy, airPlayPort);
