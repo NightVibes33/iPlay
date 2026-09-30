@@ -1,5 +1,9 @@
 name: Build unsigned iPlay IPA
 
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   push:
@@ -44,6 +48,9 @@ jobs:
           strings "$BIN" | grep -F "iPlayCarPlayServiceMain"
           strings "$BIN" | grep -F "_airplay._tcp"
           strings "$BIN" | grep -F "_raop._tcp"
+          strings "$BIN" | grep -F "com.apple.carkit.service.shim.remote"
+          strings "$BIN" | grep -F "_remotepairing-pairable-host._tcp."
+          strings "$BIN" | grep -F "LocalDevVPN"
 
           # Private frameworks are intentionally runtime-loaded instead of
           # hard-linked, so SideStore can sign the normal application binary.
