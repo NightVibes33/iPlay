@@ -3056,8 +3056,14 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
            flowSSID.UTF8String);
     self.bluetoothHandedOff = NO;
     if (geteuid() != 0) {
-        [self transitionTo:StatePreparingBT];
-        dispatch_async(self.bgQueue, ^{ [self bgPrepareBT]; });
+        if (self.sideStoreMode == 0) {
+            /* A -> A is local: there is no physical Bluetooth bootstrap. */
+            [self transitionTo:StatePreparingNet];
+            dispatch_async(self.bgQueue, ^{ [self bgPrepareNet]; });
+        } else {
+            [self transitionTo:StatePreparingBT];
+            dispatch_async(self.bgQueue, ^{ [self bgPrepareBT]; });
+        }
         return;
     }
     [self transitionTo:StateAwaitingAP];
