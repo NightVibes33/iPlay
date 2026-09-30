@@ -2386,7 +2386,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.bgTask = UIBackgroundTaskInvalid;
     self.tcpdumpPid = 0;
     self.tcpdumpMissingPromptShown = NO;
-    _diagnosticsEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:DIAGNOSTICS_ENABLED_KEY];
+    _diagnosticsEnabled = (geteuid() == 0)
+        ? [[NSUserDefaults standardUserDefaults] boolForKey:DIAGNOSTICS_ENABLED_KEY]
+        : NO;
     self.cars = [[CarStore alloc] init];
 
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
@@ -2918,7 +2920,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)showSideStoreModePicker {
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"iPlay CarPlay"
-        message:@"Choose how this iPhone should be used."
+        message:@"For A → A, keep LocalDevVPN enabled. iPlay pairs with this iPhone through Developer Mode and starts CarPlay locally; it does not require a vehicle to appear first in Settings › General › CarPlay."
         preferredStyle:UIAlertControllerStyleActionSheet];
     [sheet addAction:[UIAlertAction actionWithTitle:@"CarPlay on This iPhone (A → A)"
         style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
@@ -3551,10 +3553,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         ? @"Bluetooth Hardware Not Supported"
         : @"Bluetooth Setup Failed";
     self.pendingBluetoothErrorExplanation = unsupported
-        ? @"Showcase could not take over this device's Bluetooth controller. "
+        ? @"iPlay could not take over this device's Bluetooth controller. "
           "Tell the developer or community that this model is not yet supported "
           "and include the diagnostic below."
-        : @"Showcase's Bluetooth components are incomplete or could not start. "
+        : @"iPlay's Bluetooth components are incomplete or could not start. "
           "Copy the diagnostic below before reinstalling or reporting the problem.";
     self.pendingBluetoothDiagnostic = report;
     [self stopFlow];
@@ -3944,18 +3946,20 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)promptInstallTcpdumpIfNeeded {
+    /* tcpdump is a jailbreak-only diagnostic convenience from Showcase.
+     * A stock SideStore build must never ask for Sileo or any jailbreak package. */
+    if (geteuid() != 0) {
+        ip_log("[SIDESTORE] tcpdump unavailable; diagnostics remain disabled");
+        self.diagnosticsEnabled = NO;
+        return;
+    }
     if (self.tcpdumpMissingPromptShown) return;
     self.tcpdumpMissingPromptShown = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController *ac = [UIAlertController
             alertControllerWithTitle:@"Network Dump Unavailable"
-            message:@"tcpdump is not installed. Install the package named tcpdump in Sileo, then reopen Showcase. CarPlay can still run; only the network dump is disabled."
+            message:@"Optional jailbreak diagnostics are unavailable. CarPlay itself can still run."
             preferredStyle:UIAlertControllerStyleAlert];
-        [ac addAction:[UIAlertAction actionWithTitle:@"Open Sileo"
-            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-                NSURL *u = [NSURL URLWithString:@"sileo://package/tcpdump"];
-                [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
-            }]];
         [ac addAction:[UIAlertAction actionWithTitle:@"OK"
             style:UIAlertActionStyleCancel handler:nil]];
         UIViewController *p = self.vc.presentedViewController ?: self.vc;
@@ -3982,7 +3986,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }
 
     NSString *stamp = [self timestampStringForFilename];
-    NSString *path = [NSString stringWithFormat:@"%s/showcase_bridge100_%@.pcap", TCPDUMP_DIR, stamp];
+    NSString *path = [NSString stringWithFormat:@"%s/iplay_bridge100_%@.pcap", TCPDUMP_DIR, stamp];
 
     /* First try tcpdump's own 5-minute rotation stop, so the child exits even
      * if the app crashes. Older builds that dislike -G/-W fall back to an app
