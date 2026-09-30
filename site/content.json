@@ -23,13 +23,13 @@
       "Keep iPlay in the foreground while the local CarKit service, wired iAP2 session and embedded AirPlay receiver start. CarPlay should then render back inside iPlay."
     ],
     "adb": "iOS / SideStore implementation notes",
-    "bssid": "No Android head unit is required for A→A. The same-device path uses LocalDevVPN, Remote Pairing/RSD, the CarKit service, wired iAP2 control and iPlay's embedded AirPlay receiver.",
+    "bssid": "No external head unit is required for A→A. The same-device path uses LocalDevVPN, Remote Pairing/RSD, the CarKit service, wired iAP2 control and iPlay's embedded AirPlay receiver.",
     "whats": "In this build",
     "features": [
       "A→A is the main mode: the source iPhone and the iPlay head unit are the same physical device.",
       "NFCARD/AirCard-style LocalDevVPN and Remote Pairing are embedded into the SideStore build.",
       "Trusted RSD opens com.apple.carkit.service.shim.remote on the same iPhone.",
-      "The local controller performs DiPlay-compatible wired iAP2 identification and CarPlay session negotiation.",
+      "The local controller performs wired iAP2 identification and CarPlay session negotiation.",
       "The AirPlay/CarPlay receiver runs in-process inside the IPA and waits for port 7000 readiness before starting A→A.",
       "H.264 CarPlay video, audio handling, encrypted control/event channels and touch/HID return are included in the receiver core.",
       "Experimental display negotiation supports up to 120 FPS presentation while source-frame capability remains device/session dependent.",
@@ -48,7 +48,7 @@
     "source": "Source code",
     "feedback": "Report an issue",
     "privacy": "Privacy",
-    "footer": "Independent iOS CarPlay receiver research project based on DiPlay/xcertplay and Showcase receiver work. Not affiliated with Apple. CarPlay and related trademarks belong to Apple Inc.",
+    "footer": "Independent iOS CarPlay receiver research project based on xcertplay and Showcase receiver work. Not affiliated with Apple. CarPlay and related trademarks belong to Apple Inc.",
     "supportScope": "Current development is focused on iPhone A → A through SideStore + LocalDevVPN. iPhone A → B is secondary while the same-device path is stabilized."
   }
 }
