@@ -605,6 +605,69 @@ static int run_baa_broker(void) {
     return 0;
 }
 
+
+/* LocalDevVPN wired-iAP2 uses the same preheated DeviceIdentity key as the
+ * AirPlay receiver. The private SecKeyRef remains process-local; callers only
+ * receive certificate bytes or a signature over the phone-provided challenge. */
+int iPlayBAAGetCertificateChain(uint8_t **leaf, size_t *leafLength,
+                                uint8_t **intermediate, size_t *intermediateLength) {
+    if (!leaf || !leafLength || !intermediate || !intermediateLength)
+        return -1;
+    *leaf = NULL; *intermediate = NULL;
+    *leafLength = 0; *intermediateLength = 0;
+    if (!g_baa_ready || !g_baa_broker_key ||
+        !g_baa_leaf_der || !g_baa_inter_der ||
+        g_baa_leaf_len <= 0 || g_baa_inter_len <= 0)
+        return -2;
+
+    uint8_t *leafCopy = malloc((size_t)g_baa_leaf_len);
+    uint8_t *interCopy = malloc((size_t)g_baa_inter_len);
+    if (!leafCopy || !interCopy) {
+        free(leafCopy); free(interCopy);
+        return -3;
+    }
+    memcpy(leafCopy, g_baa_leaf_der, (size_t)g_baa_leaf_len);
+    memcpy(interCopy, g_baa_inter_der, (size_t)g_baa_inter_len);
+    *leaf = leafCopy;
+    *leafLength = (size_t)g_baa_leaf_len;
+    *intermediate = interCopy;
+    *intermediateLength = (size_t)g_baa_inter_len;
+    return 0;
+}
+
+int iPlayBAASignChallenge(const uint8_t *challenge, size_t challengeLength,
+                          uint8_t **signature, size_t *signatureLength) {
+    if (!challenge || challengeLength == 0 || !signature || !signatureLength)
+        return -1;
+    *signature = NULL;
+    *signatureLength = 0;
+    if (!g_baa_ready || !g_baa_broker_key) return -2;
+
+    NSData *message = [NSData dataWithBytes:challenge length:challengeLength];
+    CFErrorRef error = NULL;
+    CFDataRef signedData = SecKeyCreateSignature(
+        g_baa_broker_key,
+        kSecKeyAlgorithmECDSASignatureMessageX962SHA256,
+        (__bridge CFDataRef)message,
+        &error);
+    if (!signedData) {
+        if (error) CFRelease(error);
+        return -3;
+    }
+
+    size_t length = (size_t)CFDataGetLength(signedData);
+    uint8_t *copy = malloc(length);
+    if (!copy) {
+        CFRelease(signedData);
+        return -4;
+    }
+    memcpy(copy, CFDataGetBytePtr(signedData), length);
+    CFRelease(signedData);
+    *signature = copy;
+    *signatureLength = length;
+    return 0;
+}
+
 /* ═══════════════════════════════════════════════════════════════
  * Encrypted Transport (ChaCha20-Poly1305) after pair-verify
  *
