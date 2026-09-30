@@ -6155,17 +6155,23 @@ int main(int argc, char *argv[]) {
     printf("[SVC] Ed25519:   REAL keypair (sk stored for pair-verify)\n");
 
     /*
-     * Normal receiver mode keeps the original BAA/MFi path.
-     * A->A local simulator mode deliberately does not call DeviceIdentity:
-     * modern iOS requires com.apple.mobileactivationd.spi for that API and a
-     * normal SideStore app cannot carry that private entitlement.
+     * Try the real BAA/MFi identity in every mode. On some iOS builds a
+     * SideStore app can resolve DeviceIdentity but the private issuance call
+     * may still be entitlement-gated; failure is therefore non-fatal for the
+     * trusted LocalDevVPN/RSD A->A path. If issuance succeeds, the local iAP2
+     * controller can answer the normal AA00/AA02 challenge and carkitd gets
+     * the same authenticated accessory lifecycle as a physical head unit.
      */
     if (!g_local_simulator_mode) {
         if (!issue_baa_for_broker()) {
             load_baa_from_broker();
         }
     } else {
-        printf("[BAA] Local simulator mode: skipping MFi/BAA preheat\n");
+        if (issue_baa_for_broker()) {
+            printf("[BAA] Local A->A: in-process BAA identity available\n");
+        } else {
+            printf("[BAA] Local A->A: DeviceIdentity unavailable; trusted RSD fallback remains enabled\n");
+        }
     }
 
     /* Prefer bridge100 when it is already present. Personal Hotspot can
