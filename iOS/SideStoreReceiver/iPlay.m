@@ -3947,7 +3947,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)promptInstallTcpdumpIfNeeded {
     /* tcpdump is a jailbreak-only diagnostic convenience from Showcase.
-     * A stock SideStore build must never ask for Sileo or any jailbreak package. */
+     * A stock SideStore build must never ask for external jailbreak-only packages. */
     if (geteuid() != 0) {
         ip_log("[SIDESTORE] tcpdump unavailable; diagnostics remain disabled");
         self.diagnosticsEnabled = NO;
