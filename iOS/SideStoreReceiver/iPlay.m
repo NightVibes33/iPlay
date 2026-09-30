@@ -3369,12 +3369,25 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
                     snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
                     /*
-                     * A->A now uses the real trusted CarKit/iAP2 path over
-                     * LocalDevVPN, so it needs the receiver's normal BAA/MFi
-                     * authentication profile too. Do not use the old
-                     * MFi-suppressed simulator profile here.
+                     * A->A runs over an already trusted Remote-Pairing/RSD
+                     * CarKit relationship. Do not advertise AirPlay MFi-SAP
+                     * for that local session: a normal SideStore app cannot
+                     * mint DeviceIdentity BAA certificates, and the trusted
+                     * RSD path is designed to advance without physical MFi.
+                     *
+                     * A->B keeps the normal receiver/MFi feature profile.
                      */
-                    char *args[] = {
+                    char *argsTrusted[] = {
+                        (char *)"iPlay-CarPlay-Service",
+                        (char *)"--name", nameArg,
+                        (char *)"--width", widthArg,
+                        (char *)"--height", heightArg,
+                        (char *)"--fps", fpsArg,
+                        (char *)"--screen-rcvbuf", bufferArg,
+                        (char *)"--local-simulator",
+                        NULL
+                    };
+                    char *argsNormal[] = {
                         (char *)"iPlay-CarPlay-Service",
                         (char *)"--name", nameArg,
                         (char *)"--width", widthArg,
@@ -3383,7 +3396,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--screen-rcvbuf", bufferArg,
                         NULL
                     };
-                    int rc = iPlayCarPlayServiceMain(11, args);
+                    BOOL trustedAtoA = (self.sideStoreMode == 0);
+                    int rc = iPlayCarPlayServiceMain(
+                        trustedAtoA ? 12 : 11,
+                        trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
                 }
