@@ -503,16 +503,21 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     param_string(&p, 4, "0.1");
     param_string(&p, 5, "1.0");
     /*
-     * The LocalDevVPN stream is already authenticated by Remote Pairing/RSD.
-     * Do not advertise the physical-accessory MFi authentication message set
-     * (AA00..AA05). If a particular iOS build still sends AA00 anyway,
-     * authenticate_or_trusted() retains the BAA fallback when available.
+     * Match DiPlay's real wired head-unit identity. Remote Pairing/RSD gives
+     * us the trusted transport into this same iPhone, but CarKit still uses
+     * the accessory's iAP2 identity/authentication capabilities to construct
+     * its messaging vehicle and normal pairing lifecycle. Advertising the
+     * complete AA00..AA05 exchange lets carkitd persist the vehicle that
+     * Settings -> General -> CarPlay reads. authenticate_or_trusted() still
+     * accepts iOS builds that advance directly on the trusted RSD shim.
      */
     static const uint16_t sent[] = {
+        0xaa01,0xaa03,
         0x5000,0x5002,0x5200,0x5203,0xae00,0xae02,
         0x4157,0x4159,0x4154,0x4156,0xae03,0x4301
     };
     static const uint16_t recv[] = {
+        0xaa00,0xaa02,0xaa04,0xaa05,
         0xea00,0xea01,0x5001,0x5201,0x5202,0xae01,
         0x4158,0x4155,0x4300,0x4e0e
     };
@@ -699,7 +704,8 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
         local_log("identification rejected/unexpected id=0x%04x", id);
         goto done;
     }
-    local_log("iAP2 identification accepted");
+    local_log("iAP2 identification accepted; CarKit can now construct the iPlay messaging vehicle");
+    local_log("Settings lifecycle: waiting for accessory authentication / trusted-RSD approval");
 
     PendingControlMessage pending;
     if (!authenticate_or_trusted(&c, &pending)) goto done;
@@ -719,6 +725,7 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
         p = pending.params;
         pending.present = NO;
         if (id == 0x4300) {
+            local_log("Settings lifecycle: CarPlay availability received (0x4300); system pairing vehicle is active");
             BOOL sent = send_start_session(&c, airPlayPort);
             buf_free(&p);
             if (!sent) goto done;
@@ -734,6 +741,7 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
     while (!atomic_load(&g_local_stop)) {
         if (!control_recv_csm(&c, &id, &p)) break;
         if (id == 0x4300) {
+            local_log("Settings lifecycle: CarPlay availability received (0x4300); system pairing vehicle is active");
             BOOL sent = send_start_session(&c, airPlayPort);
             buf_free(&p);
             if (!sent) goto done;
