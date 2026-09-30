@@ -50,6 +50,7 @@ extern BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *addr
 extern NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout);
 extern void iPlayStopRequestedCarPlaySession(void);
 extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
+extern volatile int g_iPlayAirPlayServerReady;
 
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3381,9 +3382,21 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     self.inProcessServiceStarted = NO;
                 }
             });
-            usleep(350000);
+            /* Wait for the linked receiver to publish deterministic readiness.
+             * This avoids racing AirPlaySender against port 7000 / mDNS setup. */
+            for (int attempt = 0;
+                 attempt < 100 && !g_iPlayAirPlayServerReady;
+                 attempt++) {
+                usleep(50000);
+            }
+            ip_log("[SIDESTORE] receiver readiness=%d",
+                   g_iPlayAirPlayServerReady ? 1 : 0);
         }
         if (self.sideStoreMode == 0) {
+            if (!g_iPlayAirPlayServerReady) {
+                [self failWith:@"Local CarPlay receiver did not become ready"];
+                return;
+            }
             BOOL requested = iPlayStartLocalCarPlaySession(receiverName, 7000);
             ip_log("[SIDESTORE] local A->A AirPlaySender/APTransport source=%d", requested ? 1 : 0);
             if (!requested) {
