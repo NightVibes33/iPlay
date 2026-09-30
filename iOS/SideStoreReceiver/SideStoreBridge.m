@@ -19,6 +19,8 @@ static void *gAPTransportHandle = NULL;
 static id gAPSharedSessionHandler = nil;
 static IMP gAPOriginalAddCarPlayHelper = NULL;
 static IMP gAPOriginalRegisterMachService = NULL;
+static NSString *gLocalFallbackDisplayName = nil;
+static NSInteger gLocalFallbackPort = 7000;
 
 extern BOOL iPlayStartLocalDevVPNCarPlay(NSString *displayName, NSInteger airPlayPort);
 extern void iPlayStopLocalDevVPNCarPlay(void);
@@ -449,27 +451,7 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
     return YES;
 }
 
-BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
-    /*
-     * Do not use CRPairedVehicleManager as the primary persistence path here.
-     * Its carkitd XPC service requires com.apple.private.carkit, which a normal
-     * SideStore provisioning profile does not carry. The trusted RSD/iAP2
-     * accessory session below lets carkitd itself create/save the paired
-     * vehicle, which is exactly what Settings -> General -> CarPlay reads.
-     */
-    NSLog(@"[iPlay:Settings] A->A vehicle persistence delegated to trusted RSD/iAP2 CarKit lifecycle");
-
-    /*
-     * Preferred SideStore path: use the same Remote Pairing + LocalDevVPN
-     * transport as NFCARD/AirCard. The Rust core opens the trusted RSD
-     * com.apple.carkit.service shim and the local controller speaks the wired
-     * iAP2 head-unit protocol directly to it.
-     */
-    if (iPlayStartLocalDevVPNCarPlay(displayName, port)) {
-        NSLog(@"[iPlay:A->A] LocalDevVPN/RSD CarKit controller started");
-        return YES;
-    }
-
+static BOOL iPlayStartDirectLocalCarPlayFallback(NSString *displayName, NSInteger port) {
     /*
      * 1. Initialize Apple's own sender stack. APBrowserCarSessionCreate
      *    registers a real CarPlay helper with APTransport's shared handler.
@@ -519,6 +501,44 @@ BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
     return iPlayStartSessionWithHost(host, YES);
 }
 
+void iPlayLocalDevVPNCarPlayDidFail(const char *reason) {
+    NSString *message = reason ? [NSString stringWithUTF8String:reason] : @"unknown failure";
+    NSLog(@"[iPlay:A->A] LocalDevVPN failed; starting direct APTransport fallback: %@", message);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *name = gLocalFallbackDisplayName.length ? gLocalFallbackDisplayName : @"iPlay";
+        NSInteger port = gLocalFallbackPort > 0 ? gLocalFallbackPort : 7000;
+        BOOL ok = iPlayStartDirectLocalCarPlayFallback(name, port);
+        NSLog(@"[iPlay:A->A] direct APTransport fallback result=%d", ok ? 1 : 0);
+    });
+}
+
+BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
+    gLocalFallbackDisplayName = [displayName.length ? displayName : @"iPlay" copy];
+    gLocalFallbackPort = port > 0 ? port : 7000;
+
+    /*
+     * Do not use CRPairedVehicleManager as the primary persistence path here.
+     * Its carkitd XPC service requires com.apple.private.carkit, which a normal
+     * SideStore provisioning profile does not carry. The trusted RSD/iAP2
+     * accessory session below lets carkitd itself create/save the paired
+     * vehicle, which is exactly what Settings -> General -> CarPlay reads.
+     */
+    NSLog(@"[iPlay:Settings] A->A vehicle persistence delegated to trusted RSD/iAP2 CarKit lifecycle");
+
+    /*
+     * Preferred SideStore path: use the same Remote Pairing + LocalDevVPN
+     * transport as NFCARD/AirCard. The Rust core opens the trusted RSD
+     * com.apple.carkit.service shim and the local controller speaks the wired
+     * iAP2 head-unit protocol directly to it.
+     */
+    if (iPlayStartLocalDevVPNCarPlay(displayName, port)) {
+        NSLog(@"[iPlay:A->A] LocalDevVPN/RSD CarKit controller started");
+        return YES;
+    }
+
+
+    return iPlayStartDirectLocalCarPlayFallback(displayName, port);
+}
 BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NSInteger port) {
     if (!address.length) return NO;
     id host = iPlayCreateSessionHost(displayName, @[], @[address], port, NO, YES);
