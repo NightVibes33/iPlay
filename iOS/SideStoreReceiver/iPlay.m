@@ -43,7 +43,12 @@
 #include <mach/mach_time.h>
 #include "baa_broker.h"
 
-extern char **environ;
+extern char **environ;\nextern BOOL iPlayPreparePrivateBluetooth(void);
+extern BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port);
+extern BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NSInteger port);
+extern void iPlayStopRequestedCarPlaySession(void);
+extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
+
 
 /* ═══════════════════════════════════════════════════════════════
  * Application logger
@@ -2312,6 +2317,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, assign) BOOL helpersLoggedThisRun;
 @property (nonatomic, assign) BOOL bluetoothHandedOff;
 @property (nonatomic, assign) BOOL bluetoothRetryAttempted;
+@property (nonatomic, assign) NSInteger sideStoreMode; /* 0 local A->A, 1 receiver B, 2 source A->B */
+@property (nonatomic, assign) BOOL inProcessServiceStarted;
 @property (nonatomic, copy) NSString *pendingBluetoothErrorTitle;
 @property (nonatomic, copy) NSString *pendingBluetoothErrorExplanation;
 @property (nonatomic, copy) NSString *pendingBluetoothDiagnostic;
@@ -2409,7 +2416,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         name:UIApplicationWillEnterForegroundNotification object:nil];
 
     [self transitionTo:StateIdle];
-    if (![self startBAABroker]) {
+    if (geteuid() != 0) {
+        self.baaReady = YES;
+        self.baaLoading = NO;
+        self.baaError = nil;
+        self.sideStoreMode = 0;
+        ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
+    } else if (![self startBAABroker]) {
         self.baaError = @"The local authentication broker could not start.";
         ip_log("BAA broker failed to start");
     } else {
@@ -2900,10 +2913,53 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }
 }
 
+- (void)showSideStoreModePicker {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"iPlay CarPlay"
+        message:@"Choose how this iPhone should be used."
+        preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"CarPlay on This iPhone (A → A)"
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
+            self.sideStoreMode = 0;
+            [self attemptStart];
+        }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Receive from Another iPhone (A → B)"
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
+            self.sideStoreMode = 1;
+            [self attemptStart];
+        }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Connect to Another iPlay iPhone"
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
+            UIAlertController *prompt = [UIAlertController alertControllerWithTitle:@"Connect to iPlay"
+                message:@"Enter the receiver iPhone's IPv6 address or local hostname."
+                preferredStyle:UIAlertControllerStyleAlert];
+            [prompt addTextFieldWithConfigurationHandler:^(UITextField *f) {
+                f.placeholder = @"fe80::… or receiver.local";
+                f.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                f.autocorrectionType = UITextAutocorrectionTypeNo;
+            }];
+            [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+            [prompt addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
+                NSString *host = prompt.textFields.firstObject.text;
+                self.sideStoreMode = 2;
+                BOOL ok = iPlayStartRemoteCarPlaySession(@"iPlay", host, 7000);
+                self.headlineLabel.text = ok ? @"Starting CarPlay" : @"Could not start CarPlay";
+                self.subtitleLabel.text = ok ? [NSString stringWithFormat:@"Connecting to %@", host] : @"CarKit session request was unavailable.";
+            }]];
+            [self.vc presentViewController:prompt animated:YES completion:nil];
+        }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    if (sheet.popoverPresentationController) {
+        sheet.popoverPresentationController.sourceView = self.primaryButton;
+        sheet.popoverPresentationController.sourceRect = self.primaryButton.bounds;
+    }
+    [self.vc presentViewController:sheet animated:YES completion:nil];
+}
+
 - (void)primaryTapped {
     switch (self.state) {
         case StateIdle:
-            if ([self.cars apReady]) [self attemptStart];
+            if (geteuid() != 0) [self showSideStoreModePicker];
+            else if ([self.cars apReady]) [self attemptStart];
             else                     [self showWifiSetup];
             break;
         case StateAwaitingAP:
@@ -2964,8 +3020,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 /* ─── Action helpers ───────────────────────────────────────── */
 
 - (void)attemptStart {
-    /* Should never be reachable when AP not ready (button is disabled) — defensive */
-    if (![self.cars apReady]) { [self showWifiSetup]; return; }
+    /* Jailbreak mode still needs the receiver hotspot. SideStore modes do not. */
+    if (geteuid() == 0 && ![self.cars apReady]) { [self showWifiSetup]; return; }
     if (self.cars.cars.count == 0) return;
     if (!self.baaReady) {
         [self preheatBAA];
@@ -2979,6 +3035,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
            [self.cars.selected.name UTF8String],
            [self.cars.apSSID UTF8String]);
     self.bluetoothHandedOff = NO;
+    if (geteuid() != 0) {
+        [self transitionTo:StatePreparingBT];
+        dispatch_async(self.bgQueue, ^{ [self bgPrepareBT]; });
+        return;
+    }
     [self transitionTo:StateAwaitingAP];
     [self.apPollTimer invalidate];
     self.apPollTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
@@ -3042,9 +3103,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.bluetoothRetryAttempted = NO;
 
     if (geteuid() != 0) {
-        [self failBluetoothWithReason:
-            @"The Showcase executable is not running as root (setuid setup failed)."
-                             unsupported:NO];
+        BOOL privateBluetooth = iPlayPreparePrivateBluetooth();
+        ip_log("[SIDESTORE] private Bluetooth bootstrap available=%d", privateBluetooth ? 1 : 0);
+        [self transitionTo:StatePreparingNet];
+        [self bgPrepareNet];
         return;
     }
     if (access([btPath fileSystemRepresentation], X_OK) != 0) {
@@ -3261,12 +3323,48 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
      * file at launch, so this has bounded storage cost and cannot silently
      * erase the evidence needed to diagnose a failed session.
      */
-    self.carplayServicesPid = spawn_daemon(
-        [svcPath UTF8String], svcArgv, LOG_DIR "/carplay_services.log");
-    if (self.carplayServicesPid <= 0) { [self failWith:@"carplay_services failed to start"]; return; }
-    if (!wait_for_pid_alive(self.carplayServicesPid, 4, "carplay_services")) {
-        [self failWith:@"carplay_services exited during setup"];
-        return;
+    if (geteuid() != 0) {
+        if (!self.inProcessServiceStarted) {
+            self.inProcessServiceStarted = YES;
+            NSString *nameCopy = [sel.name copy] ?: @"iPlay";
+            uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
+            int bufferCopy = screenReceiveBuffer;
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                @autoreleasepool {
+                    char nameArg[64], widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
+                    snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
+                    snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
+                    snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
+                    snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
+                    snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
+                    char *args[] = {
+                        (char *)"iPlay-CarPlay-Service",
+                        (char *)"--name", nameArg,
+                        (char *)"--width", widthArg,
+                        (char *)"--height", heightArg,
+                        (char *)"--fps", fpsArg,
+                        (char *)"--screen-rcvbuf", bufferArg,
+                        NULL
+                    };
+                    int rc = iPlayCarPlayServiceMain(11, args);
+                    ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
+                    self.inProcessServiceStarted = NO;
+                }
+            });
+            usleep(350000);
+        }
+        if (self.sideStoreMode == 0) {
+            BOOL requested = iPlayStartLocalCarPlaySession(sel.name ?: @"iPlay", 7000);
+            ip_log("[SIDESTORE] local A->A CarKit request=%d", requested ? 1 : 0);
+        }
+    } else {
+        self.carplayServicesPid = spawn_daemon(
+            [svcPath UTF8String], svcArgv, LOG_DIR "/carplay_services.log");
+        if (self.carplayServicesPid <= 0) { [self failWith:@"carplay_services failed to start"]; return; }
+        if (!wait_for_pid_alive(self.carplayServicesPid, 4, "carplay_services")) {
+            [self failWith:@"carplay_services exited during setup"];
+            return;
+        }
     }
 
     /* A paired phone can resume quickly enough to deliver video while the
@@ -3316,6 +3414,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)stopFlow {
+    if (geteuid() != 0) iPlayStopRequestedCarPlaySession();
     [self endAWDLSuppression];
     [self stopNetworkDumpCaptureWithReason:@"user cancelled / stopping flow"];
     [self endBackgroundTask];
