@@ -61,12 +61,32 @@ static int g_control_fd = -1;
 static int g_listener_fd = -1;
 static DNSServiceRef g_pair_service = NULL;
 
+static pthread_mutex_t g_local_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void local_log(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[iPlay:LocalDevVPN] ");
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
+    va_list copy;
+    va_copy(copy, ap);
+
+    char rendered[4096];
+    vsnprintf(rendered, sizeof(rendered), fmt, copy);
+    va_end(copy);
+
+    fprintf(stderr, "[iPlay:LocalDevVPN] %s\n", rendered);
+
+    pthread_mutex_lock(&g_local_log_lock);
+    FILE *file = fopen("/tmp/iplay-localdevvpn.log", "a");
+    if (file) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        fprintf(file, "[%lld.%06lld] %s\n",
+                (long long)now.tv_sec,
+                (long long)(now.tv_nsec / 1000),
+                rendered);
+        fclose(file);
+    }
+    pthread_mutex_unlock(&g_local_log_lock);
     va_end(ap);
 }
 
