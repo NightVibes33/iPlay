@@ -542,30 +542,67 @@ static BOOL send_baa_signature(Control *c, const uint8_t *challenge, size_t chal
     buf_free(&p);
     return ok;
 }
-static BOOL authenticate(Control *c) {
-    BOOL certSent = NO, sigSent = NO;
-    for (int i = 0; i < 16; i++) {
-        uint16_t id = 0; Buffer p;
+typedef struct {
+    BOOL present;
+    uint16_t id;
+    Buffer params;
+} PendingControlMessage;
+
+/*
+ * A physical wired accessory normally gets AA00 -> AA02 -> AA05 here.
+ * The trusted Remote-Pairing/RSD CarKit shim used by LocalDevVPN can already
+ * represent an authenticated device relationship and may advance directly to
+ * power/session traffic. Preserve that first non-auth message instead of
+ * throwing it away so both behaviours are supported by the same controller.
+ */
+static BOOL authenticate_or_trusted(Control *c, PendingControlMessage *pending) {
+    memset(pending, 0, sizeof(*pending));
+    BOOL authStarted = NO;
+    BOOL certSent = NO;
+    BOOL sigSent = NO;
+
+    for (int i = 0; i < 20; i++) {
+        uint16_t id = 0;
+        Buffer p;
         if (!control_recv_csm(c, &id, &p)) return NO;
+
         BOOL ok = YES;
         if (id == 0xaa00) {
+            authStarted = YES;
             ok = send_baa_certificate(c);
             certSent = ok;
         } else if (id == 0xaa02) {
-            const uint8_t *challenge = NULL; size_t challengeLen = 0;
+            authStarted = YES;
+            const uint8_t *challenge = NULL;
+            size_t challengeLen = 0;
             ok = get_param(&p, 0, &challenge, &challengeLen) &&
                  challengeLen > 0 && challengeLen <= 128 &&
                  send_baa_signature(c, challenge, challengeLen);
             sigSent = ok;
         } else if (id == 0xaa05) {
             buf_free(&p);
-            local_log("iAP2 BAA authentication accepted cert=%d sig=%d", certSent, sigSent);
+            local_log("iAP2 BAA authentication accepted cert=%d sig=%d",
+                      certSent, sigSent);
             return certSent && sigSent;
         } else if (id == 0xaa04 || id == 0x1d03) {
             ok = NO;
+        } else if (!authStarted) {
+            pending->present = YES;
+            pending->id = id;
+            pending->params = p; /* transfer Buffer ownership to caller */
+            local_log(
+                "trusted RSD advanced without physical MFi auth; pending=0x%04x",
+                id);
+            return YES;
         } else {
-            local_log("iAP2 auth ignoring 0x%04x", id);
+            /*
+             * Once AA00 has started, keep the authentication transaction
+             * strict. Informational messages may be interleaved, but session
+             * state must not be treated as authenticated until AA05.
+             */
+            local_log("iAP2 auth interleaved message 0x%04x", id);
         }
+
         buf_free(&p);
         if (!ok) return NO;
     }
@@ -635,9 +672,36 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
         goto done;
     }
     local_log("iAP2 identification accepted");
-    if (!authenticate(&c)) goto done;
-    if (!send_subscriptions(&c)) goto done;
+
+    PendingControlMessage pending;
+    if (!authenticate_or_trusted(&c, &pending)) goto done;
+
+    if (!send_subscriptions(&c)) {
+        if (pending.present) buf_free(&pending.params);
+        goto done;
+    }
     local_log("iAP2 power/subscriptions sent; waiting for CarPlay availability");
+
+    /*
+     * A trusted RSD session can deliver 0x4300 immediately after
+     * identification. Process it after subscriptions rather than losing it.
+     */
+    if (pending.present) {
+        id = pending.id;
+        p = pending.params;
+        pending.present = NO;
+        if (id == 0x4300) {
+            BOOL sent = send_start_session(&c, airPlayPort);
+            buf_free(&p);
+            if (!sent) goto done;
+        } else if (id == 0xaa04 || id == 0x1d03) {
+            buf_free(&p);
+            goto done;
+        } else {
+            local_log("trusted RSD pending message 0x%04x handled after subscriptions", id);
+            buf_free(&p);
+        }
+    }
 
     while (!atomic_load(&g_local_stop)) {
         if (!control_recv_csm(&c, &id, &p)) break;
