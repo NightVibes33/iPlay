@@ -17,11 +17,40 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build unsigned IPA
         run: bash scripts/build-ios-unsigned.sh
-      - name: Verify IPA
+      - name: Verify IPA and A-to-A path
         run: |
+          set -euo pipefail
           unzip -l build-ios/iPlay-unsigned.ipa
           file build-ios/Payload/iPlay.app/iPlay
-          if codesign -dv build-ios/Payload/iPlay.app/iPlay >/dev/null 2>&1; then exit 1; fi
+
+          APP=build-ios/Payload/iPlay.app
+          BIN="$APP/iPlay"
+
+          # SideStore must receive an actually unsigned app.
+          if codesign -dv "$BIN" >/dev/null 2>&1; then
+            echo "ERROR: iPlay binary unexpectedly has a code signature"
+            exit 1
+          fi
+          test ! -e "$APP/_CodeSignature"
+          test ! -e "$APP/embedded.mobileprovision"
+
+          # A green build must contain the real same-device CarPlay path,
+          # not merely a receiver shell.
+          strings "$BIN" | grep -F "APEndpointManagerCarPlayCreate"
+          strings "$BIN" | grep -F "APCarSessionRequestHandler"
+          strings "$BIN" | grep -F "addCarPlayHelper:"
+          strings "$BIN" | grep -F "startSessionWithHost:requestIdentifier:completion:"
+          strings "$BIN" | grep -F "registerSessionRequestHandlerMachService"
+          strings "$BIN" | grep -F "iPlayCarPlayServiceMain"
+          strings "$BIN" | grep -F "_airplay._tcp"
+          strings "$BIN" | grep -F "_raop._tcp"
+
+          # Private frameworks are intentionally runtime-loaded instead of
+          # hard-linked, so SideStore can sign the normal application binary.
+          if otool -L "$BIN" | grep -E "AirPlaySender|APTransport|CarKit|BluetoothManager"; then
+            echo "ERROR: private framework unexpectedly hard-linked"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: iPlay-unsigned-ipa
