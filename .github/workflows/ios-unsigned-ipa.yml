@@ -21,7 +21,6 @@ jobs:
         run: |
           unzip -l build-ios/iPlay-unsigned.ipa
           file build-ios/Payload/iPlay.app/iPlay
-          file build-ios/Payload/iPlay.app/carplay_services
           if codesign -dv build-ios/Payload/iPlay.app/iPlay >/dev/null 2>&1; then exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
