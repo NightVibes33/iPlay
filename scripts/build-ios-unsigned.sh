@@ -21,7 +21,7 @@ echo "[2/4] Compile CarPlay receiver service"
 
 echo "[3/4] Assemble unsigned app"
 cp "$SRC/Info.plist" "$OUT/Payload/iPlay.app/Info.plist"
-chmod +x "$OUT/Payload/iPlay.app/iPlay" "$OUT/Payload/iPlay.app/carplay_services"
+chmod +x "$OUT/Payload/iPlay.app/iPlay"
 
 # No codesign or ldid: SideStore signs at install time.
 if codesign -dv "$OUT/Payload/iPlay.app/iPlay" >/dev/null 2>&1; then
