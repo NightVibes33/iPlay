@@ -171,6 +171,36 @@ static void iPlayStopInProcessCarPlaySourceStack(void) {
 }
 
 
+static NSUUID *iPlayStablePairedVehicleIdentifier(void) {
+    static NSUUID *identifier = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSString *stored = [defaults stringForKey:@"iPlayCarPlayVehicleIdentifier"];
+        identifier = stored.length ? [[NSUUID alloc] initWithUUIDString:stored] : nil;
+        if (!identifier) {
+            identifier = [[NSUUID alloc] initWithUUIDString:@"49504C41-592D-4341-5250-4C4159414131"];
+            [defaults setObject:identifier.UUIDString forKey:@"iPlayCarPlayVehicleIdentifier"];
+        }
+    });
+    return identifier;
+}
+
+static NSString *iPlayStableCarPlayWiFiUUID(void) {
+    static NSString *value = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        value = [defaults stringForKey:@"iPlayCarPlayWiFiUUID"];
+        if (!value.length) {
+            value = @"49504C41-592D-5749-4649-555549444131";
+            [defaults setObject:value forKey:@"iPlayCarPlayWiFiUUID"];
+        }
+    });
+    return value;
+}
+
+
 static BOOL iPlayEnsurePairedVehicleRecord(NSString *displayName) {
     if (!iPlayLoadFramework(@"/System/Library/PrivateFrameworks/CarKit.framework/CarKit")) {
         NSLog(@"[iPlay:Settings] CarKit unavailable");
@@ -185,8 +215,8 @@ static BOOL iPlayEnsurePairedVehicleRecord(NSString *displayName) {
     }
 
     NSString *name = displayName.length ? displayName : @"iPlay";
-    NSUUID *identifier = [[NSUUID alloc] initWithUUIDString:@"49504C41-592D-4341-5250-4C4159414131"];
-    NSString *wifiUUID = @"49504C41-592D-5749-4649-555549444131";
+    NSUUID *identifier = iPlayStablePairedVehicleIdentifier();
+    NSString *wifiUUID = iPlayStableCarPlayWiFiUUID();
 
     id vehicle = ((id (*)(id, SEL))objc_msgSend)(vehicleClass, @selector(alloc));
     SEL initPair = NSSelectorFromString(@"initWithIdentifier:certificateSerial:");
@@ -332,12 +362,17 @@ static id iPlayCreateSessionHost(NSString *displayName,
      * connectivity state even when wiredCarPlaySimulator is true.
      */
     BOOL localSimulator = simulator && !remoteConnected;
-    NSString *wifiUUID = localSimulator ? nil : [NSUUID UUID].UUIDString;
+    NSString *wifiUUID = localSimulator ? nil : iPlayStableCarPlayWiFiUUID();
     NSString *deviceID = @"90:B9:31:AC:86:A0";
     NSString *publicKey = localSimulator ? nil :
         @"1b15f0ad62c894721c4097651801e62845451a183c8df8af7d6b20430823586f";
     NSString *sourceVersion = @"509.0";
-    NSUUID *pairedIdentifier = localSimulator ? nil : [NSUUID UUID];
+    /*
+     * Keep a stable pairedVehicleIdentifier even for the local simulator.
+     * This is the bridge between an A->A session and the CRVehicle record
+     * shown by Settings -> General -> CarPlay. It is not a Wi-Fi identity.
+     */
+    NSUUID *pairedIdentifier = iPlayStablePairedVehicleIdentifier();
 
     id host = ((id (*)(id, SEL))objc_msgSend)(hostClass, @selector(alloc));
 
