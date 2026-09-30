@@ -3371,7 +3371,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         }
         if (self.sideStoreMode == 0) {
             BOOL requested = iPlayStartLocalCarPlaySession(sel.name ?: @"iPlay", 7000);
-            ip_log("[SIDESTORE] local A->A CarKit request=%d", requested ? 1 : 0);
+            ip_log("[SIDESTORE] local A->A AirPlaySender/APTransport source=%d", requested ? 1 : 0);
+            if (!requested) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.headlineLabel.text = @"Local CarPlay unavailable";
+                    self.subtitleLabel.text = @"Could not initialize the on-device CarPlay sender stack.";
+                });
+            }
         }
     } else {
         self.carplayServicesPid = spawn_daemon(
