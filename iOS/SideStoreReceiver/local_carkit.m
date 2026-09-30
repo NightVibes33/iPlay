@@ -110,8 +110,8 @@ static void show_pairing_pin(NSString *pin) {
         UIViewController *vc = top_controller();
         if (!vc) return;
         NSString *message = [NSString stringWithFormat:
-            @"Enter PIN %@ in Settings › Privacy & Security › Developer Mode when iPlay appears as a pairing host.\n\n"
-             "Keep LocalDevVPN / SideStore VPN enabled. This pairing is saved and normally only needs to be done once.", pin];
+            @"Keep LocalDevVPN enabled. Open Settings › Privacy & Security › Developer Mode › Pair with iPlay, approve the pairing request, and enter PIN %@ if iOS asks.\n\n"
+             "Then return to iPlay. A → A starts CarPlay directly over the trusted local tunnel; you do not need to add a vehicle first in Settings › General › CarPlay.", pin];
         UIAlertController *alert =
             [UIAlertController alertControllerWithTitle:@"Pair iPlay with this iPhone"
                                                 message:message
