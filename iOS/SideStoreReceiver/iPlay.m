@@ -43,7 +43,8 @@
 #include <mach/mach_time.h>
 #include "baa_broker.h"
 
-extern char **environ;\nextern BOOL iPlayPreparePrivateBluetooth(void);
+extern char **environ;
+extern BOOL iPlayPreparePrivateBluetooth(void);
 extern BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port);
 extern BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NSInteger port);
 extern void iPlayStopRequestedCarPlaySession(void);
