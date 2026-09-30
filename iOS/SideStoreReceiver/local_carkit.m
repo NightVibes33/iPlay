@@ -480,13 +480,19 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     param_string(&p, 3, "IPL-A2A-0001");
     param_string(&p, 4, "0.1");
     param_string(&p, 5, "1.0");
+    /*
+     * The LocalDevVPN stream is already authenticated by Remote Pairing/RSD.
+     * Do not advertise the physical-accessory MFi authentication message set
+     * (AA00..AA05). If a particular iOS build still sends AA00 anyway,
+     * authenticate_or_trusted() retains the BAA fallback when available.
+     */
     static const uint16_t sent[] = {
-        0xaa01,0xaa03,0x5000,0x5002,0x5200,0x5203,0xae00,0xae02,
+        0x5000,0x5002,0x5200,0x5203,0xae00,0xae02,
         0x4157,0x4159,0x4154,0x4156,0xae03,0x4301
     };
     static const uint16_t recv[] = {
-        0xaa00,0xaa02,0xaa04,0xaa05,0xea00,0xea01,0x5001,0x5201,
-        0x5202,0xae01,0x4158,0x4155,0x4300,0x4e0e
+        0xea00,0xea01,0x5001,0x5201,0x5202,0xae01,
+        0x4158,0x4155,0x4300,0x4e0e
     };
     param_u16_list(&p, 6, sent, sizeof(sent)/sizeof(sent[0]));
     param_u16_list(&p, 7, recv, sizeof(recv)/sizeof(recv[0]));
