@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import <dlfcn.h>
 #include <dns_sd.h>
 #include <netdb.h>
@@ -15,9 +16,57 @@ static NSString *gSessionRequestIdentifier = nil;
 static CFTypeRef gLocalCarPlayEndpointManager = NULL;
 static void *gAirPlaySenderHandle = NULL;
 static void *gAPTransportHandle = NULL;
+static id gAPSharedSessionHandler = nil;
+static IMP gAPOriginalAddCarPlayHelper = NULL;
 
 static BOOL iPlayLoadFramework(NSString *path) {
     return dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL) != NULL;
+}
+
+
+/*
+ * APTransport keeps its useful APCarSessionRequestHandler as an internal
+ * singleton. APBrowserCarSessionCreate registers every CarPlay helper by
+ * sending -addCarPlayHelper: to that singleton. Capture the receiver of that
+ * message while preserving the original implementation verbatim.
+ *
+ * This gives A -> A a direct in-process route to
+ * -startSessionWithHost:requestIdentifier:completion: and avoids the
+ * entitlement-gated com.apple.carkit.sessionRequestHandler XPC service.
+ */
+static void iPlayCaptureAddCarPlayHelper(id self, SEL _cmd, id helper) {
+    gAPSharedSessionHandler = self;
+    IMP original = gAPOriginalAddCarPlayHelper;
+    if (original) {
+        ((void (*)(id, SEL, id))original)(self, _cmd, helper);
+    }
+}
+
+static BOOL iPlayInstallAPSessionHandlerCapture(void) {
+    Class cls = NSClassFromString(@"APCarSessionRequestHandler");
+    if (!cls) return NO;
+
+    SEL sel = NSSelectorFromString(@"addCarPlayHelper:");
+    Method method = class_getInstanceMethod(cls, sel);
+    if (!method) return NO;
+
+    IMP current = method_getImplementation(method);
+    IMP capture = (IMP)iPlayCaptureAddCarPlayHelper;
+    if (current != capture) {
+        gAPOriginalAddCarPlayHelper = current;
+        method_setImplementation(method, capture);
+    }
+    return YES;
+}
+
+static id iPlayWaitForSharedAPSessionHandler(NSTimeInterval timeout) {
+    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + MAX(timeout, 0.0);
+    do {
+        id handler = gAPSharedSessionHandler;
+        if (handler) return handler;
+        usleep(20000);
+    } while (CFAbsoluteTimeGetCurrent() < deadline);
+    return gAPSharedSessionHandler;
 }
 
 
@@ -45,6 +94,11 @@ static BOOL iPlayStartInProcessCarPlaySourceStack(void) {
         RTLD_NOW | RTLD_GLOBAL);
     if (!gAPTransportHandle || !gAirPlaySenderHandle) {
         NSLog(@"[iPlay:A->A] APTransport/AirPlaySender unavailable");
+        return NO;
+    }
+
+    if (!iPlayInstallAPSessionHandlerCapture()) {
+        NSLog(@"[iPlay:A->A] Could not install APTransport helper capture");
         return NO;
     }
 
@@ -215,24 +269,50 @@ static BOOL iPlayStartSessionWithHost(id host, BOOL localSimulator) {
 }
 
 BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port) {
-    (void)displayName;
-    (void)port;
-
     /*
-     * Primary A -> A path: bring up Apple's local CarPlay sender stack.
-     * The embedded iPlay receiver is already listening/advertising in the
-     * same process, so AirPlaySender/APTransport can discover it through
-     * the normal CarPlay Bonjour/session browser path.
+     * 1. Initialize Apple's own sender stack. APBrowserCarSessionCreate
+     *    registers a real CarPlay helper with APTransport's shared handler.
+     * 2. Capture that handler in-process.
+     * 3. Feed it a wired-simulator host pointed at this app's own dual-stack
+     *    AirPlay listener on ::1:7000.
+     *
+     * No carkitd XPC entitlement is required for this direct method call.
      */
     if (iPlayStartInProcessCarPlaySourceStack()) {
-        return YES;
+        id handler = iPlayWaitForSharedAPSessionHandler(3.0);
+        id host = iPlayCreateSessionHost(
+            displayName.length ? displayName : @"iPlay",
+            @[@"::1"],
+            @[],
+            port,
+            YES,
+            NO);
+
+        SEL start = NSSelectorFromString(
+            @"startSessionWithHost:requestIdentifier:completion:");
+        if (handler && host && [handler respondsToSelector:start]) {
+            NSString *requestID = [NSUUID UUID].UUIDString;
+            void (^completion)(BOOL, NSError *) = ^(BOOL accepted, NSError *error) {
+                NSLog(@"[iPlay:A->A] APTransport direct StartSession accepted=%d error=%@",
+                      accepted ? 1 : 0, error);
+            };
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(
+                handler, start, host, requestID, completion);
+
+            gSessionRequestHost = host;
+            gSessionRequestIdentifier = requestID;
+            NSLog(@"[iPlay:A->A] Direct APTransport session submitted handler=%@ host=%@",
+                  handler, host);
+            return YES;
+        }
+
+        NSLog(@"[iPlay:A->A] Sender stack started but shared handler/host unavailable");
     }
 
     /*
-     * Compatibility fallback for OS builds/environments where the direct
-     * source factory is unavailable. This may be rejected by carkitd on a
-     * normal SideStore sandbox because sessionRequest is a private
-     * entitlement, so it is intentionally not the primary implementation.
+     * Compatibility fallback only. carkitd can reject this route when the
+     * SideStore provisioning profile lacks the private sessionRequest
+     * entitlement, so successful A -> A must not depend on it.
      */
     id host = iPlayCreateSessionHost(displayName, @[@"::1"], @[], port, YES, NO);
     return iPlayStartSessionWithHost(host, YES);
@@ -393,6 +473,25 @@ NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
 }
 
 void iPlayStopRequestedCarPlaySession(void) {
+    /* Stop the direct APTransport A->A session before releasing its manager. */
+    if (gAPSharedSessionHandler && gSessionRequestHost) {
+        SEL stopped = NSSelectorFromString(@"stoppedSessionForHostIdentifier:");
+        SEL deviceID = NSSelectorFromString(@"deviceIdentifier");
+        if ([gAPSharedSessionHandler respondsToSelector:stopped] &&
+            [gSessionRequestHost respondsToSelector:deviceID]) {
+            id identifier =
+                ((id (*)(id, SEL))objc_msgSend)(gSessionRequestHost, deviceID);
+            if (identifier) {
+                ((void (*)(id, SEL, id))objc_msgSend)(
+                    gAPSharedSessionHandler, stopped, identifier);
+            }
+        }
+        SEL cancel = NSSelectorFromString(@"cancelRequests");
+        if ([gAPSharedSessionHandler respondsToSelector:cancel]) {
+            ((void (*)(id, SEL))objc_msgSend)(gAPSharedSessionHandler, cancel);
+        }
+    }
+
     iPlayStopInProcessCarPlaySourceStack();
 
     if (gSessionRequestClient) {
