@@ -132,6 +132,9 @@ static uint16_t g_display_height = 480;
 static uint16_t g_display_fps = 60;
 static int g_screen_receive_buffer = 512 * 1024;
 static bool g_baa_broker_mode = false;
+/* Same-device SideStore mode. The source is Apple's wired CarPlay simulator
+ * helper in this process, so advertise HomeKit/CarPlay without MFi-SAP. */
+static bool g_local_simulator_mode = false;
 
 static void parse_args(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
@@ -160,6 +163,8 @@ static void parse_args(int argc, char *argv[]) {
                 g_screen_receive_buffer = (int)value;
         } else if (!strcmp(argv[i], "--baa-broker")) {
             g_baa_broker_mode = true;
+        } else if (!strcmp(argv[i], "--local-simulator")) {
+            g_local_simulator_mode = true;
         }
     }
 }
@@ -219,8 +224,20 @@ static const uint8_t ed25519_pk[32] = {
  * Match Apple's CarPlay Simulator advertisement exactly. Codec support is
  * negotiated through /info audioFormats; bit 20 is not an AAC-LC flag.
  */
-#define FEATURES_WITH_HK   "0x4040280,0x61"
-#define FEATURES_NO_HK     "0x4040280,0x21"
+#define FEATURES_WITH_HK         "0x4040280,0x61"
+#define FEATURES_NO_HK           "0x4040280,0x21"
+/* Local A->A removes only bit 26 (0x04000000 = MFi-SAP). Car (upper bit 0),
+ * CarPlayControl (upper bit 5), HK pairing/encryption (upper bit 6), screen
+ * and audio capabilities remain advertised. */
+#define FEATURES_LOCAL_WITH_HK   "0x40280,0x61"
+#define FEATURES_LOCAL_NO_HK     "0x40280,0x21"
+
+static const char *current_features(void) {
+    if (g_local_simulator_mode) {
+        return g_useHK ? FEATURES_LOCAL_WITH_HK : FEATURES_LOCAL_NO_HK;
+    }
+    return g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK;
+}
 
 /* HK ON — bit 38 (HKPairingAndEncrypt). The newer Apple SDK unconditionally
  * sets this bit. iOS 18 may require it for CarPlay connections.
@@ -1614,6 +1631,12 @@ static void handle_auth_setup(int sock, const HTTPReq *r) {
     for (int i = 0; i < 32; i++) printf(" %02x", peerPK[i]);
     printf("\n");
 
+    if (!g_baa_ready && g_local_simulator_mode) {
+        printf("[AP] auth-setup: unexpected MFi request in local simulator mode; "
+               "sender ignored the MFi-free feature profile\n");
+        send_response(sock, proto, 403, "Forbidden", NULL, NULL, 0, r->cseq);
+        return;
+    }
     if (!g_baa_ready) {
         printf("[AP] auth-setup: BAA not ready, attempting issuance...\n");
         load_baa_from_broker();
@@ -5826,7 +5849,7 @@ static TXTRecordRef build_airplay_txt(void) {
     TXTRecordRef txt;
     TXTRecordCreate(&txt, 0, NULL);
 
-    const char *ft = g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK;
+    const char *ft = current_features();
 
     /* Apple SDK order: deviceid, features, fv, flags, model, protovers, pi, pk, srcvers */
     TXTRecordSetValue(&txt, "deviceid",    strlen(DEVICE_ID),      DEVICE_ID);
@@ -5851,7 +5874,7 @@ static TXTRecordRef build_raop_txt(void) {
     TXTRecordRef txt;
     TXTRecordCreate(&txt, 0, NULL);
 
-    const char *ft = g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK;
+    const char *ft = current_features();
 
     TXTRecordSetValue(&txt, "txtvers",  1,                      "1");
     TXTRecordSetValue(&txt, "ch",       1,                      "2");
@@ -6193,7 +6216,9 @@ int main(int argc, char *argv[]) {
 
     printf("[SVC] CarPlay Network Services v5.1 (real Ed25519 pk, no HK)\n");
     printf("[SVC] DeviceID:  %s\n", DEVICE_ID);
-    printf("[SVC] Features:  %s\n", g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK);
+    printf("[SVC] Features:  %s\n", current_features());
+    printf("[SVC] Local A->A simulator auth: %s\n",
+           g_local_simulator_mode ? "YES (MFi-SAP bit suppressed)" : "NO");
     printf("[SVC] Model:     %s\n", MODEL_NAME);
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
@@ -6204,9 +6229,18 @@ int main(int argc, char *argv[]) {
     printf("[SVC] pk:        %s\n", HK_PK);
     printf("[SVC] Ed25519:   REAL keypair (sk stored for pair-verify)\n");
 
-    /* SideStore build: try DeviceIdentity directly in-process first. */
-    if (!issue_baa_for_broker()) {
-        load_baa_from_broker();
+    /*
+     * Normal receiver mode keeps the original BAA/MFi path.
+     * A->A local simulator mode deliberately does not call DeviceIdentity:
+     * modern iOS requires com.apple.mobileactivationd.spi for that API and a
+     * normal SideStore app cannot carry that private entitlement.
+     */
+    if (!g_local_simulator_mode) {
+        if (!issue_baa_for_broker()) {
+            load_baa_from_broker();
+        }
+    } else {
+        printf("[BAA] Local simulator mode: skipping MFi/BAA preheat\n");
     }
 
     /* Prefer bridge100 when it is already present. Personal Hotspot can
