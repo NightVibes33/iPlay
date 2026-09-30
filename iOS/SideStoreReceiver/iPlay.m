@@ -47,6 +47,7 @@ extern char **environ;
 extern BOOL iPlayPreparePrivateBluetooth(void);
 extern BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port);
 extern BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NSInteger port);
+extern NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout);
 extern void iPlayStopRequestedCarPlaySession(void);
 extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
 
@@ -2928,25 +2929,39 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             self.sideStoreMode = 1;
             [self attemptStart];
         }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Connect to Another iPlay iPhone"
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Connect This iPhone to Another iPlay (A → B)"
         style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            UIAlertController *prompt = [UIAlertController alertControllerWithTitle:@"Connect to iPlay"
-                message:@"Enter the receiver iPhone's IPv6 address or local hostname."
-                preferredStyle:UIAlertControllerStyleAlert];
-            [prompt addTextFieldWithConfigurationHandler:^(UITextField *f) {
-                f.placeholder = @"fe80::… or receiver.local";
-                f.autocapitalizationType = UITextAutocapitalizationTypeNone;
-                f.autocorrectionType = UITextAutocorrectionTypeNo;
-            }];
-            [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-            [prompt addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
-                NSString *host = prompt.textFields.firstObject.text;
-                self.sideStoreMode = 2;
-                BOOL ok = iPlayStartRemoteCarPlaySession(@"iPlay", host, 7000);
-                self.headlineLabel.text = ok ? @"Starting CarPlay" : @"Could not start CarPlay";
-                self.subtitleLabel.text = ok ? [NSString stringWithFormat:@"Connecting to %@", host] : @"CarKit session request was unavailable.";
-            }]];
-            [self.vc presentViewController:prompt animated:YES completion:nil];
+            self.sideStoreMode = 2;
+            self.headlineLabel.text = @"Finding iPlay";
+            self.subtitleLabel.text = @"Looking for a receiver on the local network…";
+            dispatch_async(self.bgQueue, ^{
+                NSString *host = iPlayDiscoverRemoteCarPlayReceiver(5.0);
+                BOOL ok = host.length ? iPlayStartRemoteCarPlaySession(@"iPlay", host, 7000) : NO;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (ok) {
+                        self.headlineLabel.text = @"Starting CarPlay";
+                        self.subtitleLabel.text = [NSString stringWithFormat:@"Connecting to %@", host];
+                        return;
+                    }
+
+                    UIAlertController *prompt = [UIAlertController alertControllerWithTitle:@"Receiver Not Found"
+                        message:@"Make sure the other iPhone is running iPlay in Receive mode on the same network, or enter its IPv6/local hostname manually."
+                        preferredStyle:UIAlertControllerStyleAlert];
+                    [prompt addTextFieldWithConfigurationHandler:^(UITextField *f) {
+                        f.placeholder = @"fe80::…%en0 or receiver.local";
+                        f.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                        f.autocorrectionType = UITextAutocorrectionTypeNo;
+                    }];
+                    [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+                    [prompt addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
+                        NSString *manualHost = prompt.textFields.firstObject.text;
+                        BOOL manualOK = iPlayStartRemoteCarPlaySession(@"iPlay", manualHost, 7000);
+                        self.headlineLabel.text = manualOK ? @"Starting CarPlay" : @"Could not start CarPlay";
+                        self.subtitleLabel.text = manualOK ? [NSString stringWithFormat:@"Connecting to %@", manualHost] : @"CarKit session request was unavailable.";
+                    }]];
+                    [self.vc presentViewController:prompt animated:YES completion:nil];
+                });
+            });
         }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     if (sheet.popoverPresentationController) {
