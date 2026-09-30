@@ -19,7 +19,7 @@
   <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
-  <key>NSLocalNetworkUsageDescription</key><string>iPlay receives wireless CarPlay over the local network.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>iPlay uses the local network for CarPlay and to pair with this iPhone through LocalDevVPN.</string>
   <key>NSBluetoothAlwaysUsageDescription</key><string>iPlay uses Bluetooth to bootstrap wireless CarPlay head-unit sessions.</string>
   <key>NSBonjourServices</key>
   <array><string>_airplay._tcp</string><string>_raop._tcp</string><string>_iplay-carplay._tcp</string><string>_remotepairing-pairable-host._tcp</string></array>
