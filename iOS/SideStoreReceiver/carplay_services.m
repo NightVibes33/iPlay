@@ -244,6 +244,12 @@ static const char *current_features(void) {
     return g_useHK ? FEATURES_WITH_HK : FEATURES_NO_HK;
 }
 
+static uint64_t current_features_u64(void) {
+    uint64_t upper = g_useHK ? 0x61ULL : 0x21ULL;
+    uint64_t lower = g_local_simulator_mode ? 0x00040280ULL : 0x04040280ULL;
+    return (upper << 32) | lower;
+}
+
 /* Global pairing context — initialized in main(), used by pair handlers */
 static pair_ctx_t *g_pair = NULL;
 #define PAIRING_STORE_DIR  "/tmp"
@@ -949,7 +955,9 @@ static void handle_info(int sock, const HTTPReq *r) {
         bool rtsp = (strncmp(r->protocol, "RTSP", 4) == 0);
         const char *proto = rtsp ? "RTSP/1.0" : "HTTP/1.1";
 
-        uint64_t features = g_useHK ? 0x6104040280ULL : 0x2104040280ULL;
+        /* Keep /info exactly aligned with the DNS-SD feature mask.
+         * Local trusted A->A must not reintroduce MFi-SAP after discovery. */
+        uint64_t features = current_features_u64();
 
         NSMutableDictionary *info = [NSMutableDictionary dictionary];
         info[@"deviceID"] = @DEVICE_ID;
@@ -6123,7 +6131,7 @@ int main(int argc, char *argv[]) {
     printf("[SVC] CarPlay Network Services v5.1 (real Ed25519 pk, no HK)\n");
     printf("[SVC] DeviceID:  %s\n", DEVICE_ID);
     printf("[SVC] Features:  %s\n", current_features());
-    printf("[SVC] Local A->A simulator auth: %s\n",
+    printf("[SVC] Local A->A trusted auth profile: %s\n",
            g_local_simulator_mode ? "YES (MFi-SAP bit suppressed)" : "NO");
     printf("[SVC] Model:     %s\n", MODEL_NAME);
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
