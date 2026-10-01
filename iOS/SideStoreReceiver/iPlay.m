@@ -6062,6 +6062,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     dispatch_async(self.bgQueue, ^{
         if (self.clientFd >= 0) { close(self.clientFd); self.clientFd = -1; }
         if (self.listenFd >= 0) { close(self.listenFd); self.listenFd = -1; }
+        if (iPlayIsStockSideStoreBuild()) {
+            /*
+             * Release the receiver end immediately instead of waiting for the
+             * next startIPCListener call. This prevents stale socketpair/TCP
+             * endpoints and fd accumulation across A→A retries.
+             */
+            iPlayCarPlayServiceSetAppSocket(-1);
+        }
         self.ipcPort = 0;
         if (!iPlayIsStockSideStoreBuild()) unlink(SOCK_PATH);
         g_touch_fd = -1;
