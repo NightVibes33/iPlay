@@ -622,10 +622,6 @@
                                                                primary:NO action:^{
         [self exportDiagnostics];
     }]];
-    [diagnosticsStack addArrangedSubview:[self upstreamButtonWithTitle:@"Choose save location"
-                                                               primary:NO action:^{
-        [self exportDiagnostics];
-    }]];
     [diagnosticsStack addArrangedSubview:[self upstreamLabel:
         @"Reports are created locally and the iOS share sheet lets you choose Files or another destination. Nothing is sent automatically."
                                             size:14
@@ -646,18 +642,12 @@
         [defaults setBool:value forKey:@"iPlayAutoConnect"];
     }];
     [self upstreamAddToggleTo:automaticStack
-                        title:@"Open after the car starts"
-                  description:@"On iOS, reconnect when iPlay returns to the foreground."
+                        title:@"Reconnect when iPlay returns"
+                  description:@"If CarPlay has stopped, returning to iPlay starts the saved connection mode."
                         value:[defaults boolForKey:@"iPlayAutoForeground"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayAutoForeground"];
     }];
-    [automaticStack addArrangedSubview:[self upstreamButtonWithTitle:@"Choose iPhone · This iPhone"
-                                                              primary:NO action:^{
-        [weakSettings dismissViewControllerAnimated:YES completion:^{
-            [self showSideStoreModePicker];
-        }];
-    }]];
     [root addArrangedSubview:automatic];
 
     UIStackView *displayStack = nil;
@@ -665,11 +655,11 @@
                                               symbol:@"display"
                                                stack:&displayStack];
     [self upstreamAddChoiceTo:displayStack
-                        title:@"CarPlay size"
-                      options:@[@"Large", @"Medium", @"Small"]
-                       values:@[@250, @300, @350]
+                        title:@"Physical length"
+                      options:@[@"100 mm", @"150 mm", @"200 mm", @"250 mm", @"300 mm", @"350 mm", @"400 mm"]
+                       values:@[@100, @150, @200, @250, @300, @350, @400]
                    currentKey:@"iPlayPhysicalWidthMm"
-                 defaultValue:300
+                 defaultValue:200
                    reconnects:YES];
     [displayStack addArrangedSubview:[self upstreamLabel:
         @"Changes the size of CarPlay icons and text by changing the physical display width reported to the iPhone."
@@ -679,8 +669,8 @@
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Resolution"
-                      options:@[@"Native", @"80% · lighter load", @"60% · lightest load"]
-                       values:@[@10, @8, @6]
+                      options:@[@"0.3x", @"0.4x", @"0.5x", @"0.6x", @"0.7x", @"0.8x", @"0.9x", @"1.0x"]
+                       values:@[@3, @4, @5, @6, @7, @8, @9, @10]
                    currentKey:@"iPlayDisplayScaleTenths"
                  defaultValue:10
                    reconnects:YES];
@@ -695,8 +685,8 @@
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Frame rate"
-                      options:@[@"30 fps · lighter load", @"60 fps · smoother motion", @"120 fps · high refresh"]
-                       values:@[@30, @60, @120]
+                      options:@[@"30 fps", @"35 fps", @"40 fps", @"45 fps", @"50 fps", @"55 fps", @"60 fps"]
+                       values:@[@30, @35, @40, @45, @50, @55, @60]
                    currentKey:@"iPlayFrameRate"
                  defaultValue:60
                    reconnects:YES];
@@ -751,6 +741,21 @@
         [defaults setBool:value forKey:@"iPlayAudioFocus"];
     }];
     [root addArrangedSubview:audio];
+
+    UIStackView *locationStack = nil;
+    UIView *location = [self upstreamSectionWithTitle:@"Location"
+                                               symbol:@"location"
+                                                stack:&locationStack];
+    [self upstreamAddToggleTo:locationStack
+                        title:@"Report location to iPhone"
+                  description:@"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix while CarPlay requests it."
+                        value:[defaults boolForKey:@"iPlayLocationReport"]
+                      changed:^(BOOL value) {
+        [defaults setBool:value forKey:@"iPlayLocationReport"];
+        if (self.state == StateActive || self.state == StateAwaitingPhone)
+            [self upstreamReconnectCurrentMode];
+    }];
+    [root addArrangedSubview:location];
 
     UIStackView *permissionsStack = nil;
     UIView *permissions = [self upstreamSectionWithTitle:@"Permissions and connection help"
