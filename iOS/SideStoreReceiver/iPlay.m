@@ -2519,9 +2519,15 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     if (va > vva) { rw = vw; rh = vw / va; rx = 0; ry = (vh - rh) / 2.0f; }
     else          { rh = vh; rw = vh * va; rx = (vw - rw) / 2.0f; ry = 0; }
     float nx = (pt.x - rx) / rw, ny = (pt.y - ry) / rh;
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return NO;
-    *outX = (uint16_t)(nx * cw);
-    *outY = (uint16_t)(ny * ch);
+    /*
+     * Upstream clamps normalized coordinates instead of dropping contacts.
+     * Never drop UP/CANCEL outside the rendered rectangle or a HID slot can
+     * remain logically pressed.
+     */
+    nx = fmaxf(0.0f, fminf(1.0f, nx));
+    ny = fmaxf(0.0f, fminf(1.0f, ny));
+    *outX = (uint16_t)lrintf(nx * cw);
+    *outY = (uint16_t)lrintf(ny * ch);
     return YES;
 }
 - (NSNumber *)slotForTouch:(UITouch *)touch create:(BOOL)create {
