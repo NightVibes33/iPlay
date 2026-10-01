@@ -55,8 +55,11 @@ jobs:
           # Real upstream UI / input controls must be in the shipped binary.
           strings "$BIN" | grep -F "CarPlay settings"
           strings "$BIN" | grep -F "Physical length"
+          strings "$BIN" | grep -F "Physical size basis"
+          strings "$BIN" | grep -F -- "--height-physical-mm"
           strings "$BIN" | grep -F "OEM label"
           strings "$BIN" | grep -F "Choose image"
+          strings "$BIN" | grep -F "Manufacturer"
           strings "$BIN" | grep -F "2a2a2a2a"
           test -s "$APP/ic_carplay.png"
 
