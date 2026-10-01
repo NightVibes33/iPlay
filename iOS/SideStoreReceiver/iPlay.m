@@ -4184,7 +4184,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         BOOL previewLocation = [settingsDefaults boolForKey:@"iPlayLocationReport"];
 
         applyHint.text = [NSString stringWithFormat:
-            @"Resolution handshake: %u x %u\n"
+            @"Resolution handshake: %u x %u -> %u x %u\n"
              @"Identity: %@ / %@\n"
              @"OEM label: %@\n"
              @"Frame rate: %u fps\n"
@@ -4196,6 +4196,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
              @"Video transport: %@\n"
              @"Location reporting: %@\n"
              @"Safe area: %@",
+            previewDisplay.nativeLong, previewDisplay.nativeShort,
             previewDisplay.width, previewDisplay.height,
             previewManufacturer, previewModel,
             previewOEM,
