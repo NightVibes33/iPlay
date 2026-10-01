@@ -3224,7 +3224,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
         @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
-        @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel"
+        @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel",
+        @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
+        @"iPlaySafeRightPm", @"iPlaySafeBottomPm",
+        @"iPlaySafeDrawOutside"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3751,6 +3754,130 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [rhdRow addArrangedSubview:rhdSwitch];
     [displayStack addArrangedSubview:rhdRow];
+
+    [displayStack addArrangedSubview:
+        [self upstreamLabel:@"Safe area" size:20 color:SECONDARY bold:NO]];
+
+    UILabel *safeSummary = [self upstreamLabel:@"" size:15 color:ACCENT bold:NO];
+    [displayStack addArrangedSubview:safeSummary];
+
+    NSInteger (^safeValue)(NSString *, NSInteger) =
+        ^NSInteger(NSString *key, NSInteger fallback) {
+            return [settingsDefaults objectForKey:key]
+                ? [settingsDefaults integerForKey:key] : fallback;
+        };
+    void (^refreshSafeSummary)(void) = ^{
+        NSInteger left = MAX(0, MIN(999, safeValue(@"iPlaySafeLeftPm", 0)));
+        NSInteger top = MAX(0, MIN(999, safeValue(@"iPlaySafeTopPm", 0)));
+        NSInteger right = MAX(left + 1, MIN(1000, safeValue(@"iPlaySafeRightPm", 1000)));
+        NSInteger bottom = MAX(top + 1, MIN(1000, safeValue(@"iPlaySafeBottomPm", 1000)));
+        safeSummary.text = [NSString stringWithFormat:
+            @"%.1f%% × %.1f%% at (%.1f%%, %.1f%%)",
+            (right - left) / 10.0, (bottom - top) / 10.0,
+            left / 10.0, top / 10.0];
+    };
+    refreshSafeSummary();
+
+    NSMutableArray<UISlider *> *safeSliders = [NSMutableArray array];
+    NSArray<NSString *> *safeTitles = @[@"Left", @"Top", @"Right", @"Bottom"];
+    NSArray<NSString *> *safeKeys = @[
+        @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
+        @"iPlaySafeRightPm", @"iPlaySafeBottomPm"
+    ];
+    NSArray<NSNumber *> *safeDefaults = @[@0, @0, @1000, @1000];
+
+    for (NSInteger safeIndex = 0; safeIndex < 4; safeIndex++) {
+        UIStackView *safeRow = [[UIStackView alloc] init];
+        safeRow.axis = UILayoutConstraintAxisHorizontal;
+        safeRow.alignment = UIStackViewAlignmentCenter;
+        safeRow.spacing = 14;
+        UILabel *safeLabel =
+            [self upstreamLabel:safeTitles[safeIndex] size:16 color:SECONDARY bold:NO];
+        [safeLabel.widthAnchor constraintEqualToConstant:70].active = YES;
+        [safeRow addArrangedSubview:safeLabel];
+
+        UISlider *safeSlider = [[UISlider alloc] init];
+        safeSlider.minimumValue = 0;
+        safeSlider.maximumValue = 1000;
+        safeSlider.value =
+            safeValue(safeKeys[safeIndex], safeDefaults[safeIndex].integerValue);
+        safeSlider.minimumTrackTintColor = ACCENT;
+        safeSlider.maximumTrackTintColor =
+            [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+        safeSlider.tag = safeIndex;
+        [safeSliders addObject:safeSlider];
+
+        __weak UISlider *weakSafeSlider = safeSlider;
+        [safeSlider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+            (void)action;
+            UISlider *slider = weakSafeSlider;
+            if (!slider) return;
+
+            NSInteger value = (NSInteger)llround(slider.value / 5.0) * 5;
+            NSInteger left = safeValue(@"iPlaySafeLeftPm", 0);
+            NSInteger top = safeValue(@"iPlaySafeTopPm", 0);
+            NSInteger right = safeValue(@"iPlaySafeRightPm", 1000);
+            NSInteger bottom = safeValue(@"iPlaySafeBottomPm", 1000);
+
+            if (slider.tag == 0) value = MAX(0, MIN(right - 5, value));
+            else if (slider.tag == 1) value = MAX(0, MIN(bottom - 5, value));
+            else if (slider.tag == 2) value = MAX(left + 5, MIN(1000, value));
+            else value = MAX(top + 5, MIN(1000, value));
+
+            slider.value = value;
+            [settingsDefaults setInteger:value forKey:safeKeys[slider.tag]];
+            refreshSafeSummary();
+        }] forControlEvents:UIControlEventValueChanged];
+
+        [safeRow addArrangedSubview:safeSlider];
+        [displayStack addArrangedSubview:safeRow];
+    }
+
+    UIStackView *safeButtons = [[UIStackView alloc] init];
+    safeButtons.axis = UILayoutConstraintAxisHorizontal;
+    safeButtons.distribution = UIStackViewDistributionFillEqually;
+    safeButtons.spacing = 12;
+    UIButton *resetSafe = [UIButton buttonWithType:UIButtonTypeCustom];
+    [resetSafe setTitle:@"Reset" forState:UIControlStateNormal];
+    [self styleUpstreamButton:resetSafe primary:NO];
+    [resetSafe addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSArray<NSNumber *> *values = @[@0, @0, @1000, @1000];
+        for (NSInteger i = 0; i < 4; i++) {
+            [settingsDefaults setInteger:values[i].integerValue forKey:safeKeys[i]];
+            safeSliders[i].value = values[i].floatValue;
+        }
+        refreshSafeSummary();
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [safeButtons addArrangedSubview:resetSafe];
+    [displayStack addArrangedSubview:safeButtons];
+
+    UIStackView *drawOutsideRow = [[UIStackView alloc] init];
+    drawOutsideRow.axis = UILayoutConstraintAxisHorizontal;
+    drawOutsideRow.alignment = UIStackViewAlignmentCenter;
+    drawOutsideRow.spacing = 16;
+    UIStackView *drawOutsideText = [[UIStackView alloc] init];
+    drawOutsideText.axis = UILayoutConstraintAxisVertical;
+    drawOutsideText.spacing = 5;
+    [drawOutsideText addArrangedSubview:
+        [self upstreamLabel:@"Draw outside safe area" size:18 color:SECONDARY bold:NO]];
+    [drawOutsideText addArrangedSubview:[self upstreamLabel:
+        @"Allow CarPlay UI outside the safe-area rectangle."
+        size:14 color:SECONDARY bold:NO]];
+    [drawOutsideRow addArrangedSubview:drawOutsideText];
+    UISwitch *drawOutsideSwitch = [[UISwitch alloc] init];
+    drawOutsideSwitch.onTintColor = ACCENT;
+    drawOutsideSwitch.on =
+        [settingsDefaults objectForKey:@"iPlaySafeDrawOutside"] == nil
+            ? YES : [settingsDefaults boolForKey:@"iPlaySafeDrawOutside"];
+    __weak UISwitch *weakDrawOutsideSwitch = drawOutsideSwitch;
+    [drawOutsideSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [settingsDefaults setBool:weakDrawOutsideSwitch.isOn
+                           forKey:@"iPlaySafeDrawOutside"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [drawOutsideRow addArrangedSubview:drawOutsideSwitch];
+    [displayStack addArrangedSubview:drawOutsideRow];
 
     UIStackView *fullRow = [[UIStackView alloc] init];
     fullRow.axis = UILayoutConstraintAxisHorizontal;
