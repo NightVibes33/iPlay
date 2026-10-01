@@ -3044,6 +3044,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 @property (nonatomic, copy) NSString *pendingBluetoothErrorExplanation;
 @property (nonatomic, copy) NSString *pendingBluetoothDiagnostic;
 @property (nonatomic, copy) NSString *lastStartupFailure;
+@property (nonatomic, copy) NSString *lastIPCError;
 
 /* Networking */
 @property (nonatomic, assign) int listenFd;
@@ -5660,8 +5661,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
            manufacturer.UTF8String, modelName.UTF8String, oemLabel.UTF8String);
 
     if (![self startIPCListener]) {
-        ip_log("IPC listener failed before CarPlay service launch");
-        [self failWith:@"IPC listener failed"];
+        NSString *ipcReason = self.lastIPCError.length
+            ? [NSString stringWithFormat:@"IPC setup failed: %@", self.lastIPCError]
+            : @"IPC setup failed";
+        ip_log("IPC setup failed before CarPlay service launch: %s",
+               ipcReason.UTF8String);
+        [self failWith:ipcReason];
         return;
     }
 
@@ -6896,6 +6901,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 /* ─── IPC listener ─────────────────────────────────────────── */
 
 - (BOOL)startIPCListener {
+    self.lastIPCError = nil;
     if (self.listenFd >= 0) {
         close(self.listenFd);
         self.listenFd = -1;
@@ -6954,6 +6960,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         }
 
         int pairErrno = errno;
+        self.lastIPCError = [NSString stringWithFormat:
+            @"socketpair errno=%d (%s)", pairErrno, strerror(pairErrno)];
         ip_log("IPC socketpair failed errno=%d %s; trying 127.0.0.1 fallback",
                pairErrno, strerror(pairErrno));
 
@@ -6968,8 +6976,13 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
         int fd = socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) {
+            int socketErrno = errno;
+            self.lastIPCError = [NSString stringWithFormat:
+                @"%@; fallback socket errno=%d (%s)",
+                self.lastIPCError ?: @"socketpair unavailable",
+                socketErrno, strerror(socketErrno)];
             ip_log("IPC fallback socket(AF_INET) failed errno=%d %s",
-                   errno, strerror(errno));
+                   socketErrno, strerror(socketErrno));
             return NO;
         }
 
@@ -6984,6 +6997,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
         if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
             int bindErrno = errno;
+            self.lastIPCError = [NSString stringWithFormat:
+                @"%@; fallback bind errno=%d (%s)",
+                self.lastIPCError ?: @"socketpair unavailable",
+                bindErrno, strerror(bindErrno)];
             ip_log("IPC fallback bind(127.0.0.1:0) failed errno=%d %s",
                    bindErrno, strerror(bindErrno));
             close(fd);
@@ -6991,6 +7008,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         }
         if (listen(fd, 1) != 0) {
             int listenErrno = errno;
+            self.lastIPCError = [NSString stringWithFormat:
+                @"%@; fallback listen errno=%d (%s)",
+                self.lastIPCError ?: @"socketpair unavailable",
+                listenErrno, strerror(listenErrno)];
             ip_log("IPC fallback listen failed errno=%d %s",
                    listenErrno, strerror(listenErrno));
             close(fd);
@@ -7000,6 +7021,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         socklen_t addrLen = sizeof(addr);
         if (getsockname(fd, (struct sockaddr *)&addr, &addrLen) != 0) {
             int nameErrno = errno;
+            self.lastIPCError = [NSString stringWithFormat:
+                @"%@; fallback getsockname errno=%d (%s)",
+                self.lastIPCError ?: @"socketpair unavailable",
+                nameErrno, strerror(nameErrno)];
             ip_log("IPC fallback getsockname failed errno=%d %s",
                    nameErrno, strerror(nameErrno));
             close(fd);
@@ -7010,6 +7035,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         self.clientFd = -1;
         self.ipcPort = ntohs(addr.sin_port);
         if (self.ipcPort == 0) {
+            self.lastIPCError = [NSString stringWithFormat:
+                @"%@; fallback returned port 0",
+                self.lastIPCError ?: @"socketpair unavailable"];
             ip_log("IPC fallback produced invalid ephemeral port 0");
             close(fd);
             self.listenFd = -1;
