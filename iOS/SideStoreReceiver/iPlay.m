@@ -6118,10 +6118,56 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self.vc presentViewController:error animated:YES completion:nil];
 }
 
+- (void)writeLastStartupFailureReport:(NSString *)message {
+    NSMutableString *report = [NSMutableString string];
+    [report appendString:@"iPlay last startup failure\n"];
+    [report appendString:@"========================================\n"];
+    [report appendFormat:@"Date: %@\n", [NSDate date]];
+    [report appendFormat:@"Failure: %@\n", message ?: @"Unknown CarPlay startup failure"];
+    [report appendFormat:@"State: %ld\n", (long)self.state];
+    [report appendFormat:@"Mode: %ld (0=A->A, 1=Receive A->B, 2=Send A->B)\n",
+                         (long)self.sideStoreMode];
+    [report appendFormat:@"IPC: clientFd=%d listenFd=%d port=%u\n",
+                         self.clientFd, self.listenFd, self.ipcPort];
+    [report appendString:
+        @"\nFull persistent logs are stored beside this file in iPlay Logs.\n"];
+
+    NSArray<NSDictionary *> *sources = @[
+        @{@"title": @"APP LOG (TAIL)",
+          @"path": iPlaySandboxLogPath(@"iplay-app.log")},
+        @{@"title": @"CARPLAY SERVICE LOG (TAIL)",
+          @"path": iPlaySandboxLogPath(@"iplay-service.log")},
+        @{@"title": @"CARPLAY SERVICE STDOUT/STDERR (TAIL)",
+          @"path": iPlaySandboxLogPath(@"iplay-service-stdio.log")},
+        @{@"title": @"LOCALDEVVPN / RSD LOG (TAIL)",
+          @"path": iPlaySandboxLogPath(@"iplay-localdevvpn.log")},
+    ];
+    for (NSDictionary *source in sources) {
+        NSString *title = source[@"title"];
+        NSString *path = source[@"path"];
+        NSString *tail = bounded_log_tail(path, 256 * 1024, 800);
+        [report appendFormat:@"\n\n===== %@ =====\n", title];
+        [report appendString:tail.length ? tail :
+            [NSString stringWithFormat:@"(no data yet at %@)\n", path]];
+        if (tail.length && ![tail hasSuffix:@"\n"]) [report appendString:@"\n"];
+    }
+
+    NSString *path = iPlaySandboxLogPath(@"last-start-failure.txt");
+    NSError *error = nil;
+    if (![report writeToFile:path atomically:YES
+                    encoding:NSUTF8StringEncoding error:&error]) {
+        ip_log("failure report write failed: %s",
+               error.localizedDescription.UTF8String ?: "unknown");
+    } else {
+        ip_log("failure report written: %s", path.UTF8String);
+    }
+}
+
 - (void)failWith:(NSString *)reason {
     NSString *message = reason.length ? reason : @"Unknown CarPlay startup failure";
     self.lastStartupFailure = message;
     ip_log("FAIL: %s", message.UTF8String);
+    [self writeLastStartupFailureReport:message];
     [self stopFlow];
 }
 
