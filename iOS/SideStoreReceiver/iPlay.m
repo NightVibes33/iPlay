@@ -15,6 +15,7 @@
 
 #import <UIKit/UIKit.h>
 #import <CoreLocation/CoreLocation.h>
+#import <PhotosUI/PhotosUI.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreMedia/CoreMedia.h>
@@ -2698,7 +2699,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 @class CarsViewController;
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate>
+@interface AppDelegate : UIResponder <UIApplicationDelegate, PHPickerViewControllerDelegate>
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) RootViewController *vc;
 @property (nonatomic, strong) VideoView *videoView;
@@ -2727,6 +2728,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) UIImageView *upstreamHeaderIcon;
 @property (nonatomic, strong) UIImageView *upstreamBrandIcon;
 @property (nonatomic, strong) UIView *upstreamWirelessCard;
+@property (nonatomic, weak) UIImageView *airPlayIconPreview;
 
 /* Upstream DiPlay gesture: three-finger swipe down opens the real
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
@@ -3073,6 +3075,81 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [self attemptStart];
 }
 
+- (NSString *)airPlayCustomIconPath {
+    NSArray<NSString *> *paths =
+        NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documents = paths.firstObject ?: NSTemporaryDirectory();
+    return [documents stringByAppendingPathComponent:@"airplay-icon.png"];
+}
+
+- (UIImage *)currentAirPlayIconImage {
+    UIImage *custom = [UIImage imageWithContentsOfFile:[self airPlayCustomIconPath]];
+    return custom ?: [UIImage imageNamed:@"ic_carplay.png"];
+}
+
+- (UIImage *)squareAirPlayIconFromImage:(UIImage *)source {
+    if (!source || source.size.width <= 0 || source.size.height <= 0) return nil;
+    CGSize target = CGSizeMake(256, 256);
+    CGFloat scale = MAX(target.width / source.size.width,
+                        target.height / source.size.height);
+    CGSize drawn = CGSizeMake(source.size.width * scale, source.size.height * scale);
+    CGRect rect = CGRectMake((target.width - drawn.width) / 2.0,
+                             (target.height - drawn.height) / 2.0,
+                             drawn.width, drawn.height);
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:target];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        (void)context;
+        [source drawInRect:rect];
+    }];
+}
+
+- (void)chooseAirPlayIconForPreview:(UIImageView *)preview {
+    PHPickerConfiguration *configuration = [[PHPickerConfiguration alloc] init];
+    configuration.selectionLimit = 1;
+    configuration.filter = [PHPickerFilter imagesFilter];
+    PHPickerViewController *picker =
+        [[PHPickerViewController alloc] initWithConfiguration:configuration];
+    picker.delegate = self;
+    self.airPlayIconPreview = preview;
+    [[self topPresenter] presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)picker:(PHPickerViewController *)picker
+didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    PHPickerResult *result = results.firstObject;
+    if (!result) return;
+    NSItemProvider *provider = result.itemProvider;
+    if (![provider canLoadObjectOfClass:[UIImage class]]) return;
+
+    __weak typeof(self) weakSelf = self;
+    [provider loadObjectOfClass:[UIImage class]
+              completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
+        if (error || ![object isKindOfClass:[UIImage class]]) return;
+        UIImage *picked = (UIImage *)object;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            typeof(self) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            UIImage *square = [strongSelf squareAirPlayIconFromImage:picked];
+            NSData *png = square ? UIImagePNGRepresentation(square) : nil;
+            if (!png.length) return;
+            if ([png writeToFile:[strongSelf airPlayCustomIconPath] atomically:YES]) {
+                strongSelf.airPlayIconPreview.image = square;
+                ip_log("[UI] custom AirPlay icon saved (%lu bytes)",
+                       (unsigned long)png.length);
+            }
+        });
+    }];
+}
+
+- (void)restoreDefaultAirPlayIconForPreview:(UIImageView *)preview {
+    [[NSFileManager defaultManager] removeItemAtPath:[self airPlayCustomIconPath]
+                                               error:nil];
+    preview.image = [UIImage imageNamed:@"ic_carplay.png"];
+    ip_log("[UI] custom AirPlay icon cleared");
+}
+
 - (UIView *)upstreamSettingsCardWithTitle:(NSString *)title
                                     stack:(UIStackView **)outStack {
     UIColor *SURFACE = [UIColor colorWithRed:21/255.0 green:30/255.0 blue:44/255.0 alpha:1];
@@ -3135,7 +3212,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
         @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
-        @"iPlayManufacturer", @"iPlayModel"
+        @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3143,6 +3220,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         baseline[key] = value ?: [NSNull null];
     }
     NSInteger baselineMode = self.sideStoreMode;
+    NSString *baselineIconPath = [self airPlayCustomIconPath];
+    NSData *baselineIconData = [NSData dataWithContentsOfFile:baselineIconPath];
     BOOL baselineFullscreen = [settingsDefaults objectForKey:@"iPlayFullScreen"] == nil
         ? YES : [settingsDefaults boolForKey:@"iPlayFullScreen"];
     void (^restoreBaseline)(void) = ^{
@@ -3152,6 +3231,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             else [settingsDefaults setObject:value forKey:key];
         }
         self.sideStoreMode = baselineMode;
+        if (baselineIconData.length > 0)
+            [baselineIconData writeToFile:baselineIconPath atomically:YES];
+        else
+            [[NSFileManager defaultManager] removeItemAtPath:baselineIconPath error:nil];
         if (self.state == StateActive && [self isPhone]) {
             self.vc.fullscreenMode = baselineFullscreen;
             [self.vc.view setNeedsLayout];
@@ -3369,8 +3452,80 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }] forControlEvents:UIControlEventEditingChanged];
     [identityStack addArrangedSubview:modelField];
 
+    [identityStack addArrangedSubview:
+        [self upstreamLabel:@"OEM label" size:18 color:SECONDARY bold:NO]];
+    UITextField *oemLabelField = [[UITextField alloc] init];
+    NSString *savedOEMLabel = [settingsDefaults stringForKey:@"iPlayOEMLabel"];
+    if (savedOEMLabel.length == 0) savedOEMLabel = @"BYD";
+    oemLabelField.text = savedOEMLabel;
+    oemLabelField.textColor = TEXT;
+    oemLabelField.backgroundColor =
+        [UIColor colorWithRed:28/255.0 green:36/255.0 blue:42/255.0 alpha:1];
+    oemLabelField.layer.cornerRadius = 12;
+    oemLabelField.font = [UIFont systemFontOfSize:17];
+    oemLabelField.autocorrectionType = UITextAutocorrectionTypeNo;
+    oemLabelField.autocapitalizationType = UITextAutocapitalizationTypeWords;
+    oemLabelField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    oemLabelField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 14, 1)];
+    oemLabelField.leftViewMode = UITextFieldViewModeAlways;
+    [oemLabelField.heightAnchor constraintEqualToConstant:52].active = YES;
+    __weak UITextField *weakOEMLabelField = oemLabelField;
+    [oemLabelField addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSString *value =
+            [weakOEMLabelField.text stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (value.length > 0)
+            [settingsDefaults setObject:value forKey:@"iPlayOEMLabel"];
+        else
+            [settingsDefaults removeObjectForKey:@"iPlayOEMLabel"];
+    }] forControlEvents:UIControlEventEditingChanged];
+    [identityStack addArrangedSubview:oemLabelField];
+
+    [identityStack addArrangedSubview:
+        [self upstreamLabel:@"AirPlay icon" size:20 color:SECONDARY bold:NO]];
+    UIStackView *iconRow = [[UIStackView alloc] init];
+    iconRow.axis = UILayoutConstraintAxisHorizontal;
+    iconRow.alignment = UIStackViewAlignmentCenter;
+    iconRow.spacing = 16;
+
+    UIImageView *iconPreview = [[UIImageView alloc] initWithImage:[self currentAirPlayIconImage]];
+    iconPreview.contentMode = UIViewContentModeScaleAspectFill;
+    iconPreview.clipsToBounds = YES;
+    iconPreview.layer.cornerRadius = 8;
+    iconPreview.backgroundColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    [iconPreview.widthAnchor constraintEqualToConstant:72].active = YES;
+    [iconPreview.heightAnchor constraintEqualToConstant:72].active = YES;
+    [iconRow addArrangedSubview:iconPreview];
+
+    UIStackView *iconActions = [[UIStackView alloc] init];
+    iconActions.axis = UILayoutConstraintAxisVertical;
+    iconActions.spacing = 8;
+    UIButton *chooseIcon = [UIButton buttonWithType:UIButtonTypeCustom];
+    [chooseIcon setTitle:@"Choose image" forState:UIControlStateNormal];
+    [self styleUpstreamButton:chooseIcon primary:NO];
+    [chooseIcon.heightAnchor constraintEqualToConstant:52].active = YES;
+    [chooseIcon addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [self chooseAirPlayIconForPreview:iconPreview];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [iconActions addArrangedSubview:chooseIcon];
+
+    UIButton *defaultIcon = [UIButton buttonWithType:UIButtonTypeCustom];
+    [defaultIcon setTitle:@"Default icon" forState:UIControlStateNormal];
+    [self styleUpstreamButton:defaultIcon primary:NO];
+    [defaultIcon.heightAnchor constraintEqualToConstant:52].active = YES;
+    [defaultIcon addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [self restoreDefaultAirPlayIconForPreview:iconPreview];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [iconActions addArrangedSubview:defaultIcon];
+    [iconRow addArrangedSubview:iconActions];
+    [identityStack addArrangedSubview:iconRow];
+
     [identityStack addArrangedSubview:[self upstreamLabel:
-        @"Manufacturer and model are published in AirPlay /info and DNS-SD after Save and reconnect."
+        @"Manufacturer, model, OEM label and the square AirPlay icon are published by the real receiver after Save and reconnect."
         size:14 color:SECONDARY bold:NO]];
     [root addArrangedSubview:identityCard];
 
