@@ -66,6 +66,10 @@ jobs:
           strings "$BIN" | grep -F "OEM label"
           strings "$BIN" | grep -F "Choose image"
           strings "$BIN" | grep -F "Manufacturer"
+          strings "$BIN" | grep -F "Debug logs"
+          strings "$BIN" | grep -F "Waiting for iPlay logs"
+          strings "$BIN" | grep -F "airplay-icon.png"
+          strings "$BIN" | grep -F "LocationInformation"
           strings "$BIN" | grep -F "2a2a2a2a"
           strings "$BIN" | grep -F "Finding iPlay"
           test -s "$APP/ic_carplay.png"
@@ -74,6 +78,8 @@ jobs:
           # Guard against the old fake/pause overlay returning to the source.
           grep -F "ThreeFingerSwipeDownGestureRecognizer" iOS/SideStoreReceiver/iPlay.m
           grep -F '#include "upstream_ui.inc"' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'setDebugOverlayEnabled:' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'debugOverlayTailText' iOS/SideStoreReceiver/iPlay.m
           grep -F 'initWithItems:@[@"This iPhone · A → A", @"Receive · A → B", @"Send · A → B"]' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'if (mode == 2) [self startRemoteAtoB];' iOS/SideStoreReceiver/iPlay.m
