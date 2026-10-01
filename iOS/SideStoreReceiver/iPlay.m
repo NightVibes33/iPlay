@@ -2738,6 +2738,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) UITextView *debugOverlayView;
 @property (nonatomic, strong) NSTimer *debugOverlayTimer;
 @property (nonatomic, strong) CLLocationManager *settingsLocationManager;
+@property (nonatomic, weak) UISwitch *locationSettingsSwitch;
 
 /* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
 - (void)buildUpstreamHomeReal;
@@ -2878,6 +2879,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         status == kCLAuthorizationStatusRestricted) {
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"]) {
             [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
+            self.locationSettingsSwitch.on = NO;
             [self showCarPlayLocationPermissionHelp];
         }
     }
@@ -4147,6 +4149,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UISwitch *locationSwitch = [[UISwitch alloc] init];
     locationSwitch.onTintColor = ACCENT;
     locationSwitch.on = [settingsDefaults boolForKey:@"iPlayLocationReport"];
+    self.locationSettingsSwitch = locationSwitch;
     __weak UISwitch *weakLocationSwitch = locationSwitch;
     [locationSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
