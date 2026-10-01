@@ -431,37 +431,68 @@
                                              symbol:@"cable.connector.horizontal"
                                               stack:&chooseStack];
     __weak UIViewController *weakPage = page;
-    NSString *(^modeTitle)(NSInteger, NSString *) =
-        ^NSString *(NSInteger mode, NSString *title) {
-            return self.sideStoreMode == mode
-                ? [NSString stringWithFormat:@"✓  %@", title]
-                : title;
-        };
+    UIButton *localModeButton =
+        [self upstreamButtonWithTitle:@"CarPlay on this iPhone (A → A)"
+                              primary:NO action:nil];
+    UIButton *receiveModeButton =
+        [self upstreamButtonWithTitle:@"Receive from another iPhone (A → B)"
+                              primary:NO action:nil];
+    UIButton *sendModeButton =
+        [self upstreamButtonWithTitle:@"Connect this iPhone to another iPlay (A → B)"
+                              primary:NO action:nil];
 
-    [chooseStack addArrangedSubview:
-        [self upstreamButtonWithTitle:
-            modeTitle(0, @"CarPlay on this iPhone (A → A)")
-                              primary:(self.sideStoreMode == 0) action:^{
+    __weak UIButton *weakLocalModeButton = localModeButton;
+    __weak UIButton *weakReceiveModeButton = receiveModeButton;
+    __weak UIButton *weakSendModeButton = sendModeButton;
+    void (^refreshModeButtons)(void) = ^{
+        NSArray<UIButton *> *buttons = @[
+            weakLocalModeButton ?: [UIButton new],
+            weakReceiveModeButton ?: [UIButton new],
+            weakSendModeButton ?: [UIButton new]
+        ];
+        NSArray<NSString *> *titles = @[
+            @"CarPlay on this iPhone (A → A)",
+            @"Receive from another iPhone (A → B)",
+            @"Connect this iPhone to another iPlay (A → B)"
+        ];
+        for (NSInteger mode = 0; mode < 3; mode++) {
+            UIButton *button = buttons[mode];
+            if (!button.superview) continue;
+            BOOL selected = self.sideStoreMode == mode;
+            [button setTitle:(selected
+                ? [NSString stringWithFormat:@"✓  %@", titles[mode]]
+                : titles[mode])
+                    forState:UIControlStateNormal];
+            [self styleUpstreamButton:button primary:selected];
+        }
+    };
+
+    [localModeButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
         self.sideStoreMode = 0;
         [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
-    }]];
+        refreshModeButtons();
+    }] forControlEvents:UIControlEventTouchUpInside];
 
-    [chooseStack addArrangedSubview:
-        [self upstreamButtonWithTitle:
-            modeTitle(1, @"Receive from another iPhone (A → B)")
-                              primary:(self.sideStoreMode == 1) action:^{
+    [receiveModeButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
         self.sideStoreMode = 1;
         [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"iPlayLastMode"];
-    }]];
+        refreshModeButtons();
+    }] forControlEvents:UIControlEventTouchUpInside];
 
-    [chooseStack addArrangedSubview:
-        [self upstreamButtonWithTitle:
-            modeTitle(2, @"Connect this iPhone to another iPlay (A → B)")
-                              primary:(self.sideStoreMode == 2) action:^{
+    [sendModeButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
         self.sideStoreMode = 2;
         [[NSUserDefaults standardUserDefaults] setInteger:2 forKey:@"iPlayLastMode"];
+        refreshModeButtons();
         [self chooseRemoteAtoBReceiverFrom:weakPage connectAfterSelection:NO];
-    }]];
+    }] forControlEvents:UIControlEventTouchUpInside];
+
+    [chooseStack addArrangedSubview:localModeButton];
+    [chooseStack addArrangedSubview:receiveModeButton];
+    [chooseStack addArrangedSubview:sendModeButton];
+    refreshModeButtons();
     [root addArrangedSubview:choose];
 
     UIStackView *pairStack = nil;
