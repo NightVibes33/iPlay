@@ -38,6 +38,18 @@ jobs:
           test ! -e "$APP/_CodeSignature"
           test ! -e "$APP/embedded.mobileprovision"
 
+          # Files app exposure and the sandbox-safe loopback IPC transport
+          # are required in the shipped SideStore build.
+          /usr/libexec/PlistBuddy -c "Print :UIFileSharingEnabled" "$APP/Info.plist" | grep -F "true"
+          /usr/libexec/PlistBuddy -c "Print :LSSupportsOpeningDocumentsInPlace" "$APP/Info.plist" | grep -F "true"
+          strings "$BIN" | grep -F "IPC listening on 127.0.0.1:"
+          strings "$BIN" | grep -F "Connected to iPlay app via 127.0.0.1:"
+          grep -F -- '--app-port' iOS/SideStoreReceiver/iPlay.m
+          grep -F -- '--app-port' iOS/SideStoreReceiver/carplay_services.m
+          grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/carplay_services.m
+          grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/local_carkit.m
+
           # A green build must contain the real same-device CarPlay path,
           # not merely a receiver shell.
           strings "$BIN" | grep -F "APEndpointManagerCarPlayCreate"
