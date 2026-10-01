@@ -546,12 +546,8 @@ BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NS
 }
 
 typedef struct {
-    BOOL found;
-    uint32_t interfaceIndex;
-    char serviceName[256];
-    char regtype[256];
-    char domain[256];
-} iPlayBrowseContext;
+    __unsafe_unretained NSMutableArray<NSDictionary *> *services;
+} iPlayBrowseListContext;
 
 typedef struct {
     BOOL found;
@@ -560,23 +556,47 @@ typedef struct {
     char hostTarget[1024];
 } iPlayResolveContext;
 
-static void DNSSD_API iPlayBrowseCallback(DNSServiceRef sdRef,
-                                           DNSServiceFlags flags,
-                                           uint32_t interfaceIndex,
-                                           DNSServiceErrorType errorCode,
-                                           const char *serviceName,
-                                           const char *regtype,
-                                           const char *replyDomain,
-                                           void *context) {
+static void DNSSD_API iPlayBrowseListCallback(DNSServiceRef sdRef,
+                                               DNSServiceFlags flags,
+                                               uint32_t interfaceIndex,
+                                               DNSServiceErrorType errorCode,
+                                               const char *serviceName,
+                                               const char *regtype,
+                                               const char *replyDomain,
+                                               void *context) {
     (void)sdRef;
-    if (errorCode != kDNSServiceErr_NoError || !(flags & kDNSServiceFlagsAdd)) return;
-    iPlayBrowseContext *ctx = context;
-    if (!ctx || ctx->found) return;
-    ctx->found = YES;
-    ctx->interfaceIndex = interfaceIndex;
-    strlcpy(ctx->serviceName, serviceName ?: "", sizeof(ctx->serviceName));
-    strlcpy(ctx->regtype, regtype ?: "_iplay-carplay._tcp", sizeof(ctx->regtype));
-    strlcpy(ctx->domain, replyDomain ?: "local.", sizeof(ctx->domain));
+    if (errorCode != kDNSServiceErr_NoError ||
+        !(flags & kDNSServiceFlagsAdd) ||
+        !serviceName || !*serviceName) {
+        return;
+    }
+
+    iPlayBrowseListContext *ctx = context;
+    NSMutableArray<NSDictionary *> *services = ctx ? ctx->services : nil;
+    if (!services) return;
+
+    NSString *name = [NSString stringWithUTF8String:serviceName] ?: @"iPlay";
+    NSString *type = regtype
+        ? ([NSString stringWithUTF8String:regtype] ?: @"_iplay-carplay._tcp")
+        : @"_iplay-carplay._tcp";
+    NSString *domain = replyDomain
+        ? ([NSString stringWithUTF8String:replyDomain] ?: @"local.")
+        : @"local.";
+
+    for (NSDictionary *existing in services) {
+        if ([existing[@"name"] isEqualToString:name] &&
+            [existing[@"interfaceIndex"] unsignedIntValue] == interfaceIndex &&
+            [existing[@"domain"] isEqualToString:domain]) {
+            return;
+        }
+    }
+
+    [services addObject:@{
+        @"name": name,
+        @"regtype": type,
+        @"domain": domain,
+        @"interfaceIndex": @(interfaceIndex),
+    }];
 }
 
 static void DNSSD_API iPlayResolveCallback(DNSServiceRef sdRef,
@@ -657,40 +677,81 @@ static NSString *iPlayIPv6ForHost(const char *host, uint32_t interfaceIndex) {
     return answer;
 }
 
-NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
-    if (timeout <= 0) timeout = 5.0;
+NSArray<NSDictionary *> *iPlayDiscoverRemoteCarPlayReceivers(NSTimeInterval timeout) {
+    if (timeout <= 0) timeout = 4.0;
 
-    iPlayBrowseContext browse = {0};
+    NSMutableArray<NSDictionary *> *services = [NSMutableArray array];
+    iPlayBrowseListContext browse = { .services = services };
     DNSServiceRef browseRef = NULL;
-    DNSServiceErrorType err = DNSServiceBrowse(&browseRef, 0, 0,
-                                               "_iplay-carplay._tcp", "local.",
-                                               iPlayBrowseCallback, &browse);
-    if (err != kDNSServiceErr_NoError || !browseRef) return nil;
+    DNSServiceErrorType err = DNSServiceBrowse(
+        &browseRef, 0, 0, "_iplay-carplay._tcp", "local.",
+        iPlayBrowseListCallback, &browse);
+    if (err != kDNSServiceErr_NoError || !browseRef) return @[];
 
     CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + timeout;
-    while (!browse.found && CFAbsoluteTimeGetCurrent() < deadline) {
+    while (CFAbsoluteTimeGetCurrent() < deadline) {
         NSTimeInterval left = deadline - CFAbsoluteTimeGetCurrent();
-        if (!iPlayProcessDNSService(browseRef, MIN(left, 0.75))) continue;
+        if (left <= 0) break;
+        (void)iPlayProcessDNSService(browseRef, MIN(left, 0.35));
     }
     DNSServiceRefDeallocate(browseRef);
-    if (!browse.found) return nil;
 
-    iPlayResolveContext resolved = {0};
-    DNSServiceRef resolveRef = NULL;
-    err = DNSServiceResolve(&resolveRef, 0, browse.interfaceIndex,
-                            browse.serviceName, browse.regtype, browse.domain,
-                            iPlayResolveCallback, &resolved);
-    if (err != kDNSServiceErr_NoError || !resolveRef) return nil;
+    NSMutableArray<NSDictionary *> *resolvedReceivers = [NSMutableArray array];
+    NSUInteger limit = MIN((NSUInteger)12, services.count);
+    for (NSUInteger index = 0; index < limit; index++) {
+        NSDictionary *service = services[index];
+        NSString *serviceName = service[@"name"];
+        NSString *regtype = service[@"regtype"];
+        NSString *domain = service[@"domain"];
+        uint32_t interfaceIndex = [service[@"interfaceIndex"] unsignedIntValue];
 
-    deadline = CFAbsoluteTimeGetCurrent() + MAX(1.0, timeout * 0.5);
-    while (!resolved.found && CFAbsoluteTimeGetCurrent() < deadline) {
-        NSTimeInterval left = deadline - CFAbsoluteTimeGetCurrent();
-        if (!iPlayProcessDNSService(resolveRef, MIN(left, 0.75))) continue;
+        iPlayResolveContext resolved = {0};
+        DNSServiceRef resolveRef = NULL;
+        err = DNSServiceResolve(
+            &resolveRef, 0, interfaceIndex,
+            serviceName.UTF8String,
+            regtype.UTF8String,
+            domain.UTF8String,
+            iPlayResolveCallback, &resolved);
+        if (err != kDNSServiceErr_NoError || !resolveRef) continue;
+
+        CFAbsoluteTime resolveDeadline = CFAbsoluteTimeGetCurrent() + 1.25;
+        while (!resolved.found && CFAbsoluteTimeGetCurrent() < resolveDeadline) {
+            NSTimeInterval left = resolveDeadline - CFAbsoluteTimeGetCurrent();
+            if (left <= 0) break;
+            (void)iPlayProcessDNSService(resolveRef, MIN(left, 0.30));
+        }
+        DNSServiceRefDeallocate(resolveRef);
+        if (!resolved.found) continue;
+
+        NSString *host =
+            iPlayIPv6ForHost(resolved.hostTarget, resolved.interfaceIndex);
+        if (!host.length) continue;
+
+        NSInteger port = resolved.port > 0 ? resolved.port : 7000;
+        BOOL duplicate = NO;
+        for (NSDictionary *existing in resolvedReceivers) {
+            if ([existing[@"host"] isEqualToString:host] &&
+                [existing[@"port"] integerValue] == port) {
+                duplicate = YES;
+                break;
+            }
+        }
+        if (duplicate) continue;
+
+        [resolvedReceivers addObject:@{
+            @"name": serviceName.length ? serviceName : @"iPlay",
+            @"host": host,
+            @"port": @(port),
+        }];
     }
-    DNSServiceRefDeallocate(resolveRef);
-    if (!resolved.found) return nil;
 
-    return iPlayIPv6ForHost(resolved.hostTarget, resolved.interfaceIndex);
+    return resolvedReceivers;
+}
+
+NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout) {
+    NSDictionary *first = iPlayDiscoverRemoteCarPlayReceivers(timeout).firstObject;
+    return first[@"host"];
 }
 
 void iPlayStopRequestedCarPlaySession(void) {
