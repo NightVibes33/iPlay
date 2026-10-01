@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <math.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -68,6 +69,8 @@ static DNSServiceRef g_pair_service = NULL;
 
 static pthread_mutex_t g_local_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
+
+static void local_log(const char *fmt, ...);
 
 @interface IPlayCarPlayLocationSource : NSObject <CLLocationManagerDelegate>
 @property (nonatomic, strong) CLLocationManager *manager;
