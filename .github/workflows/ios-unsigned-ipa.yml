@@ -67,7 +67,7 @@ jobs:
           strings "$BIN" | grep -F "Choose image"
           strings "$BIN" | grep -F "Manufacturer"
           strings "$BIN" | grep -F "Debug logs"
-          strings "$BIN" | grep -F "Waiting for iPlay logs"
+          grep -F "Waiting for iPlay logs" iOS/SideStoreReceiver/iPlay.m
           strings "$BIN" | grep -F "Resolution handshake:"
           strings "$BIN" | grep -F "CarPlay physical size:"
           strings "$BIN" | grep -F "airplay-icon.png"
