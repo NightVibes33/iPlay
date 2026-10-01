@@ -1200,6 +1200,8 @@ static void handle_info(int sock, const HTTPReq *r) {
         /* Display capabilities — CarPlay touchscreen */
         NSMutableDictionary *display = [NSMutableDictionary dictionary];
         display[@"uuid"] = @"e0ff8a27-6738-3d56-8a16-cc53ce1299b4";
+        /* Upstream AirPlayInfoPlist STREAM_TYPE_MAIN_SCREEN. */
+        display[@"type"] = @(110);
         display[@"widthPixels"] = @(g_display_width);
         display[@"heightPixels"] = @(g_display_height);
         display[@"widthPhysical"] = @(g_display_width_physical_mm);
