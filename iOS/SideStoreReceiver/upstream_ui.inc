@@ -182,10 +182,23 @@
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSInteger value = [defaults objectForKey:key] ? [defaults integerForKey:key] : defaultValue;
     __block NSInteger selected = [values indexOfObject:@(value)];
-    if (selected == NSNotFound) selected = 0;
+
+    NSString *(^customValueLabel)(NSInteger) = ^NSString *(NSInteger current) {
+        if ([key isEqualToString:@"iPlayFrameRate"])
+            return [NSString stringWithFormat:@"%ld fps", (long)current];
+        if ([key isEqualToString:@"iPlayDisplayScaleTenths"])
+            return [NSString stringWithFormat:@"%ld.%ldx",
+                    (long)(current / 10), (long)labs(current % 10)];
+        if ([key isEqualToString:@"iPlayPhysicalWidthMm"])
+            return [NSString stringWithFormat:@"%ld mm", (long)current];
+        return [NSString stringWithFormat:@"Custom · %ld", (long)current];
+    };
+    NSString *currentLabel = selected == NSNotFound
+        ? customValueLabel(value)
+        : options[selected];
 
     UIButton *button = [self upstreamButtonWithTitle:
-        [NSString stringWithFormat:@"%@ · %@", title, options[selected]]
+        [NSString stringWithFormat:@"%@ · %@", title, currentLabel]
         primary:NO action:nil];
     __weak UIButton *weakButton = button;
     [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *sender) {
