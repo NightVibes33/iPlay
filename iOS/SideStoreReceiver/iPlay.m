@@ -4273,35 +4273,30 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     self.headlineLabel.text = @"Send CarPlay";
                     [self.primaryButton setTitle:@"Connect to iPlay receiver"
                                        forState:UIControlStateNormal];
-                    self.subtitleLabel.text =
-                        @"Send this iPhone’s real CarPlay session to another iPhone running iPlay.";
-                    self.carHintLabel.text = receiverHost.length
-                        ? [NSString stringWithFormat:@"Selected: %@ · %@",
-                                                     receiverName.length ? receiverName : @"iPlay",
-                                                     receiverHost]
-                        : @"Choose the destination iPhone before connecting.";
+                    self.subtitleLabel.text = receiverHost.length
+                        ? [NSString stringWithFormat:
+                            @"Send this iPhone’s real CarPlay session to another iPhone running iPlay.\nSelected: %@ · %@",
+                            receiverName.length ? receiverName : @"iPlay",
+                            receiverHost]
+                        : @"Send this iPhone’s real CarPlay session to another iPhone running iPlay.\nChoose the destination iPhone before connecting.";
                 } else if (self.sideStoreMode == 1) {
                     self.headlineLabel.text = @"Receive CarPlay";
                     [self.primaryButton setTitle:@"Start receiving"
                                        forState:UIControlStateNormal];
                     self.subtitleLabel.text =
-                        @"Use this iPhone as the real CarPlay display for another iPhone.";
-                    self.carHintLabel.text =
-                        @"Receive A → B advertises this iPhone as the iPlay CarPlay receiver.";
+                        @"Use this iPhone as the real CarPlay display for another iPhone.\nReceive A → B advertises this iPhone as the iPlay CarPlay receiver.";
                 } else {
                     self.headlineLabel.text = @"CarPlay on this iPhone";
                     [self.primaryButton setTitle:@"Connect phone"
                                        forState:UIControlStateNormal];
                     self.subtitleLabel.text =
-                        @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.";
-                    self.carHintLabel.text =
-                        @"A → A uses LocalDevVPN + trusted Remote Pairing.";
+                        @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.\nA → A uses LocalDevVPN + trusted Remote Pairing.";
                 }
 
                 self.secondaryButton.hidden = NO;
                 self.tertiaryButton.hidden = NO;
                 self.receiverButton.hidden = NO;
-                self.carHintLabel.hidden = NO;
+                self.carHintLabel.hidden = YES;
                 break;
             }
 
