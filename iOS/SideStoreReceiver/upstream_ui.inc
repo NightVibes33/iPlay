@@ -514,15 +514,17 @@
     } else if (self.sideStoreMode == 2 && selectedReceiver.length) {
         phoneTitle = [NSString stringWithFormat:@"Choose iPhone · %@", selectedReceiver];
     }
-    [pairStack addArrangedSubview:[self upstreamButtonWithTitle:phoneTitle
-                                                        primary:NO action:^{
-        self.sideStoreMode = 2;
-        [[NSUserDefaults standardUserDefaults] setInteger:2 forKey:@"iPlayLastMode"];
-        refreshModeButtons();
-        [self chooseRemoteAtoBReceiverFrom:weakPage
-                     connectAfterSelection:NO
-                          allowLocalTarget:NO];
-    }]];
+    UIButton *choosePhoneButton =
+        [self upstreamButtonWithTitle:phoneTitle primary:NO action:^{
+            self.sideStoreMode = 2;
+            [[NSUserDefaults standardUserDefaults] setInteger:2 forKey:@"iPlayLastMode"];
+            refreshModeButtons();
+            [self chooseRemoteAtoBReceiverFrom:weakPage
+                         connectAfterSelection:NO
+                              allowLocalTarget:NO];
+        }];
+    choosePhoneButton.tag = 0x49504348; /* IPCH */
+    [pairStack addArrangedSubview:choosePhoneButton];
     [pairStack addArrangedSubview:[self upstreamButtonWithTitle:@"Review app permissions"
                                                         primary:NO action:^{
         NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
