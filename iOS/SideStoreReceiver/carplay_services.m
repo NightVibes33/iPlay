@@ -141,6 +141,8 @@ static char g_raop_name[64]     = DEVICE_ID_RAW "@" "RoadLink";
 static uint16_t g_display_width = 800;
 static uint16_t g_display_height = 480;
 static uint16_t g_display_fps = 60;
+static uint16_t g_display_width_physical_mm = 300;
+static bool g_right_hand_drive = false;
 static int g_screen_receive_buffer = 512 * 1024;
 static bool g_baa_broker_mode = false;
 /* Same-device SideStore mode. The source is Apple's wired CarPlay simulator
@@ -172,6 +174,12 @@ static void parse_args(int argc, char *argv[]) {
             long value = strtol(argv[++i], NULL, 10);
             if (value >= 128 * 1024 && value <= 4 * 1024 * 1024)
                 g_screen_receive_buffer = (int)value;
+        } else if (!strcmp(argv[i], "--width-physical-mm") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 150 && value <= 600)
+                g_display_width_physical_mm = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--right-hand-drive") && i + 1 < argc) {
+            g_right_hand_drive = strtol(argv[++i], NULL, 10) != 0;
         } else if (!strcmp(argv[i], "--baa-broker")) {
             g_baa_broker_mode = true;
         } else if (!strcmp(argv[i], "--local-simulator")) {
@@ -1005,7 +1013,7 @@ static void handle_info(int sock, const HTTPReq *r) {
         info[@"hardwareRevision"] = @"1.0";
         info[@"OSInfo"] = @"iPadOS 12.5.8";
         info[@"nightMode"] = @NO;
-        info[@"rightHandDrive"] = @NO;
+        info[@"rightHandDrive"] = @(g_right_hand_drive);
         info[@"extendedFeatures"] = @[@"vocoderInfo"];
         /*
          * Apple's receiver advertises this dictionary when buffered main
@@ -1119,8 +1127,13 @@ static void handle_info(int sock, const HTTPReq *r) {
         display[@"uuid"] = @"e0ff8a27-6738-3d56-8a16-cc53ce1299b4";
         display[@"widthPixels"] = @(g_display_width);
         display[@"heightPixels"] = @(g_display_height);
-        display[@"widthPhysical"] = @0;
-        display[@"heightPhysical"] = @0;
+        display[@"widthPhysical"] = @(g_display_width_physical_mm);
+        uint16_t physicalHeight = g_display_width > 0
+            ? (uint16_t)MAX(1.0, llround((double)g_display_width_physical_mm *
+                                        (double)g_display_height /
+                                        (double)g_display_width))
+            : 0;
+        display[@"heightPhysical"] = @(physicalHeight);
         display[@"maxFPS"] = @(g_display_fps);
         /* Advertise only the implemented capacitive touchscreen. Knob and
          * touchpad bits are behavioral contracts, not cosmetic profile data. */
@@ -6148,8 +6161,10 @@ int main(int argc, char *argv[]) {
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
     printf("[SVC] RAOP name: %s\n", g_raop_name);
-    printf("[SVC] Display:   %ux%u @ %u FPS\n",
-           g_display_width, g_display_height, g_display_fps);
+    printf("[SVC] Display:   %ux%u @ %u FPS, physical=%umm, RHD=%s\n",
+           g_display_width, g_display_height, g_display_fps,
+           g_display_width_physical_mm,
+           g_right_hand_drive ? "YES" : "NO");
     printf("[SVC] pi:        %s\n", HK_PI);
     printf("[SVC] pk:        %s\n", HK_PK);
     printf("[SVC] Ed25519:   REAL keypair (sk stored for pair-verify)\n");
