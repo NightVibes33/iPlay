@@ -3400,6 +3400,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         : @"Choose send target")
                       forState:UIControlStateNormal];
     [self styleUpstreamButton:sendTargetButton primary:NO];
+    sendTargetButton.tag = 0x49505354; /* IPST */
     [sendTargetButton.heightAnchor constraintEqualToConstant:56].active = YES;
     sendTargetButton.hidden = (self.sideStoreMode != 2);
     self.activeSendTargetButton = sendTargetButton;
@@ -4499,6 +4500,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                 @"port": @7000,
             };
             [self saveRemoteAtoBReceiver:receiver];
+            UIButton *targetButton =
+                (UIButton *)[hostController.view viewWithTag:0x49505354];
+            if ([targetButton isKindOfClass:[UIButton class]]) {
+                [targetButton setTitle:@"Choose send target · Manual iPlay"
+                              forState:UIControlStateNormal];
+            }
             if (connectAfterSelection) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self startRemoteAtoBReceiver:receiver];
@@ -4612,6 +4619,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         style:UIAlertActionStyleDefault
                         handler:^(__unused UIAlertAction *action) {
                             [self saveRemoteAtoBReceiver:receiver];
+                            UIButton *targetButton =
+                                (UIButton *)[hostController.view viewWithTag:0x49505354];
+                            if ([targetButton isKindOfClass:[UIButton class]]) {
+                                [targetButton setTitle:[NSString stringWithFormat:
+                                    @"Choose send target · %@",
+                                    name.length ? name : @"iPlay"]
+                                              forState:UIControlStateNormal];
+                            }
                             if (connectAfterSelection) {
                                 [self startRemoteAtoBReceiver:receiver];
                             } else {
