@@ -134,7 +134,7 @@
     return card;
 }
 
-- (void)upstreamAddToggleTo:(UIStackView *)parent
+- (UISwitch *)upstreamAddToggleTo:(UIStackView *)parent
                       title:(NSString *)title
                 description:(NSString *)description
                       value:(BOOL)value
@@ -171,6 +171,7 @@
     }
     [line addArrangedSubview:toggle];
     [parent addArrangedSubview:line];
+    return toggle;
 }
 
 - (UIButton *)upstreamAddChoiceTo:(UIStackView *)parent
@@ -872,14 +873,17 @@
     UIView *location = [self upstreamSectionWithTitle:@"Location"
                                                symbol:@"location"
                                                 stack:&locationStack];
-    [self upstreamAddToggleTo:locationStack
-                        title:@"Report location to iPhone"
-                  description:@"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix while CarPlay requests it."
-                        value:[defaults boolForKey:@"iPlayLocationReport"]
-                      changed:^(BOOL value) {
+    UISwitch *homeLocationSwitch =
+        [self upstreamAddToggleTo:locationStack
+                            title:@"Report location to iPhone"
+                      description:@"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix while CarPlay requests it."
+                            value:[defaults boolForKey:@"iPlayLocationReport"]
+                          changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayLocationReport"];
-        if (value) [self requestCarPlayLocationPermissionIfNeeded];
+        if (value && ![self requestCarPlayLocationPermissionIfNeeded])
+            self.locationSettingsSwitch.on = NO;
     }];
+    self.locationSettingsSwitch = homeLocationSwitch;
     [root addArrangedSubview:location];
 
     UIStackView *permissionsStack = nil;
