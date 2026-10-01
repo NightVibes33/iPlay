@@ -6195,7 +6195,8 @@ int main(int argc, char *argv[]) {
     printf("[SVC] Features:  %s\n", current_features());
     printf("[SVC] Local A->A trusted auth profile: %s\n",
            g_local_simulator_mode ? "YES (MFi-SAP bit suppressed)" : "NO");
-    printf("[SVC] Identity:  manufacturer=%s model=%s oemLabel=%s\n",\n           g_manufacturer, g_model_name, g_oem_label);
+    printf("[SVC] Identity:  manufacturer=%s model=%s oemLabel=%s\n",
+           g_manufacturer, g_model_name, g_oem_label);
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
     printf("[SVC] RAOP name: %s\n", g_raop_name);
