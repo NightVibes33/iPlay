@@ -61,6 +61,26 @@
     return spacer;
 }
 
+- (UIView *)upstreamPlainCardWithStack:(UIStackView **)outStack {
+    UIView *card = [[UIView alloc] init];
+    card.backgroundColor = [self upstreamSurfaceColor];
+    card.layer.cornerRadius = 20;
+    card.layer.borderWidth = 1;
+    card.layer.borderColor = [self upstreamBorderColor].CGColor;
+
+    UIStackView *content = [self upstreamVerticalStack:0];
+    content.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:content];
+    [NSLayoutConstraint activateConstraints:@[
+        [content.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
+        [content.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24],
+        [content.topAnchor constraintEqualToAnchor:card.topAnchor constant:24],
+        [content.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24],
+    ]];
+    if (outStack) *outStack = content;
+    return card;
+}
+
 - (UIView *)upstreamSectionWithTitle:(NSString *)title
                               symbol:(NSString *)symbol
                                stack:(UIStackView **)outStack {
@@ -317,34 +337,37 @@
         [self upstreamLabel:@"Your maps, music and conversations.\nCarPlay, right here on your display."
                        size:19 color:[self upstreamMutedColor] bold:NO];
     [hero addArrangedSubview:self.upstreamEyebrowLabel];
+    [hero setCustomSpacing:12 afterView:self.upstreamEyebrowLabel];
     [hero addArrangedSubview:self.upstreamHeroTitleLabel];
+    [hero setCustomSpacing:10 afterView:self.upstreamHeroTitleLabel];
     [hero addArrangedSubview:self.upstreamHeroBodyLabel];
 
     UIStackView *cardStack = nil;
-    self.upstreamWirelessCard =
-        [self upstreamSectionWithTitle:@"WIRELESS CARPLAY" symbol:nil stack:&cardStack];
+    self.upstreamWirelessCard = [self upstreamPlainCardWithStack:&cardStack];
     self.upstreamWirelessLabel =
         [self upstreamLabel:@"WIRELESS CARPLAY"
                        size:12 color:[self upstreamAccentColor] bold:YES];
-    /* Section header already carries the title; keep the property for state compatibility. */
-    self.upstreamWirelessLabel.hidden = YES;
-    [cardStack insertArrangedSubview:self.upstreamWirelessLabel atIndex:0];
+    [cardStack addArrangedSubview:self.upstreamWirelessLabel];
+    [cardStack setCustomSpacing:10 afterView:self.upstreamWirelessLabel];
 
     self.headlineLabel =
         [self upstreamLabel:@"Ready when you are"
                        size:24 color:[self upstreamTextColor] bold:YES];
     [cardStack addArrangedSubview:self.headlineLabel];
+    [cardStack setCustomSpacing:16 afterView:self.headlineLabel];
 
     self.primaryButton = [self upstreamButtonWithTitle:@"Connect phone"
                                               primary:YES
                                                height:68
                                                action:^{ [self primaryTapped]; }];
     [cardStack addArrangedSubview:self.primaryButton];
+    [cardStack setCustomSpacing:14 afterView:self.primaryButton];
 
     self.subtitleLabel =
         [self upstreamLabel:@"Keep LocalDevVPN enabled. iPlay pairs with this iPhone through Developer Mode."
                        size:15 color:[self upstreamMutedColor] bold:NO];
     [cardStack addArrangedSubview:self.subtitleLabel];
+    [cardStack setCustomSpacing:16 afterView:self.subtitleLabel];
 
     self.secondaryButton = [self upstreamButtonWithTitle:@"Choose iPhone"
                                                 primary:NO
@@ -353,8 +376,9 @@
     [cardStack addArrangedSubview:self.secondaryButton];
 
     self.carHintLabel =
-        [self upstreamLabel:@"A → A uses LocalDevVPN + trusted Remote Pairing."
+        [self upstreamLabel:@""
                        size:14 color:[self upstreamMutedColor] bold:NO];
+    self.carHintLabel.hidden = YES;
     [cardStack addArrangedSubview:self.carHintLabel];
 
     self.spinner = [[UIActivityIndicatorView alloc]
@@ -386,6 +410,7 @@
                        size:14 color:[self upstreamMutedColor] bold:NO];
     self.upstreamReceiverHintLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamReceiverHintLabel];
+    [right setCustomSpacing:24 afterView:self.upstreamReceiverHintLabel];
 
     self.tertiaryButton = [self upstreamButtonWithTitle:@"Settings"
                                                primary:NO
@@ -397,6 +422,7 @@
                        size:14 color:[self upstreamMutedColor] bold:NO];
     self.upstreamSettingsHintLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamSettingsHintLabel];
+    [right setCustomSpacing:24 afterView:self.upstreamSettingsHintLabel];
 
     self.upstreamPreviewLabel =
         [self upstreamLabel:[NSString stringWithFormat:@"PUBLIC PREVIEW  ·  %s", APP_VERSION]
