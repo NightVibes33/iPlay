@@ -38,27 +38,35 @@ jobs:
           test ! -e "$APP/_CodeSignature"
           test ! -e "$APP/embedded.mobileprovision"
 
-          # Files app exposure and the direct in-process IPC transport
-          # are required in the shipped SideStore build.
+          # Files app exposure, persistent logs, and both A-to-A IPC
+          # transports are required in the shipped SideStore build.
           /usr/libexec/PlistBuddy -c "Print :UIFileSharingEnabled" "$APP/Info.plist" | grep -F "true"
           /usr/libexec/PlistBuddy -c "Print :LSSupportsOpeningDocumentsInPlace" "$APP/Info.plist" | grep -F "true"
+
+          # Primary in-process socketpair transport.
           strings "$BIN" | grep -F "IPC ready via in-process socketpair"
           strings "$BIN" | grep -F "Installed fresh in-process app IPC fd="
           strings "$BIN" | grep -F "Connected to iPlay app via in-process socketpair fd="
           grep -F 'socketpair(AF_UNIX, SOCK_STREAM, 0, pair)' iOS/SideStoreReceiver/iPlay.m
           grep -F 'iPlayCarPlayServiceSetAppSocket(pair[1])' iOS/SideStoreReceiver/iPlay.m
+
+          # Real fallback when socketpair cannot be allocated.
+          strings "$BIN" | grep -F "IPC fallback listening on 127.0.0.1:"
+          strings "$BIN" | grep -F "Connected to iPlay app via 127.0.0.1:"
+          strings "$BIN" | grep -F "Cleared stale in-process app IPC; loopback fallback may be used"
+          grep -F -- '--app-port' iOS/SideStoreReceiver/iPlay.m
+          grep -F -- '--app-port' iOS/SideStoreReceiver/carplay_services.m
           grep -F 'void iPlayCarPlayServiceSetAppSocket(int fd)' iOS/SideStoreReceiver/carplay_services.m
-          if grep -F "IPC listening on 127.0.0.1:" iOS/SideStoreReceiver/iPlay.m; then
-            echo "ERROR: SideStore loopback listener regression returned"
-            exit 1
-          fi
+
+          # Logs live under Documents/iPlay Logs so Files exposes them at:
+          # On My iPhone > iPlay > iPlay Logs.
           grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/iPlay.m
           grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/carplay_services.m
           grep -F 'stringByAppendingPathComponent:@"iPlay Logs"' iOS/SideStoreReceiver/local_carkit.m
-          grep -F 'iplay-app.log' iOS/SideStoreReceiver/iPlay.m
-          grep -F 'iplay-service.log' iOS/SideStoreReceiver/carplay_services.m
-          grep -F 'iplay-service-stdio.log' iOS/SideStoreReceiver/carplay_services.m
-          grep -F 'iplay-localdevvpn.log' iOS/SideStoreReceiver/local_carkit.m
+          strings "$BIN" | grep -F "iplay-app.log"
+          strings "$BIN" | grep -F "iplay-service.log"
+          strings "$BIN" | grep -F "iplay-service-stdio.log"
+          strings "$BIN" | grep -F "iplay-localdevvpn.log"
 
           # A green build must contain the real same-device CarPlay path,
           # not merely a receiver shell.
