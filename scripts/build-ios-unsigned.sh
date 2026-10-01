@@ -111,6 +111,7 @@ echo "[4/6] Link iPlay + receiver + LocalDevVPN core into one SideStore executab
   -o "$OUT/Payload/iPlay.app/iPlay" \
   -framework UIKit -framework AVFoundation -framework AudioToolbox \
   -framework CoreMedia -framework Foundation -framework Security -framework CoreLocation \
+  -framework PhotosUI \
   -framework QuartzCore -framework CoreVideo -framework VideoToolbox \
   -lc++ -Wl,-undefined,dynamic_lookup
 
