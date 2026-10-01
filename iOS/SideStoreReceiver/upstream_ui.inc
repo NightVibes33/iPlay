@@ -401,8 +401,9 @@
     self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamPreviewLabel];
 
-    BOOL wide = UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone &&
-                [self rootContentView].bounds.size.width >= 850.0;
+    /* Match upstream DiPlayActivity exactly: width alone selects the
+     * two-column home layout. iPhone 16 landscape is wide enough. */
+    BOOL wide = [self rootContentView].bounds.size.width >= 850.0;
     UIStackView *body = [self upstreamVerticalStack:0];
     if (wide) {
         UIStackView *top = [[UIStackView alloc] init];
