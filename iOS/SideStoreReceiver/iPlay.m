@@ -4216,7 +4216,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         ^(UIControl *control, UIControlEvents events) {
             [control addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
                 (void)action;
-                refreshSettingsPreview();
+                /* Run after the control's value-writing action so the preview
+                 * always reflects the newly staged value, regardless of
+                 * UIAction invocation order. */
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    refreshSettingsPreview();
+                });
             }] forControlEvents:events];
         };
 
