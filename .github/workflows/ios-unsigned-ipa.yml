@@ -100,11 +100,12 @@ jobs:
           grep -F 'sizeof(argsTrusted) / sizeof(argsTrusted[0])' iOS/SideStoreReceiver/iPlay.m
           grep -F 'sizeof(argsNormal) / sizeof(argsNormal[0])' iOS/SideStoreReceiver/iPlay.m
           # Keep first-launch control defaults aligned with upstream persistence.
-          grep -F 'requestedFPS = 30;' iOS/SideStoreReceiver/iPlay.m
-          grep -F 'referencePhysicalMm = 300;' iOS/SideStoreReceiver/iPlay.m
-          grep -F 'if (fpsValue < 30 || fpsValue > 60) fpsValue = 30;' \
+          grep -F 'requestedFPS = 60;' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'referencePhysicalMm = 200;' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'if (fpsValue < 30 || fpsValue > 60) fpsValue = 60;' \
             iOS/SideStoreReceiver/iPlay.m
-          grep -F 'static uint16_t g_display_fps = 30;' iOS/SideStoreReceiver/carplay_services.m
+          grep -F 'static uint16_t g_display_fps = 60;' iOS/SideStoreReceiver/carplay_services.m
+          grep -F 'static uint16_t g_display_width_physical_mm = 200;' iOS/SideStoreReceiver/carplay_services.m
           if grep -A2 -F 'objectForKey:@"iPlayAudioFocus"] == nil' iOS/SideStoreReceiver/iPlay.m | grep -F '? YES'; then
             echo "ERROR: Audio Focus default drifted from upstream"
             exit 1
