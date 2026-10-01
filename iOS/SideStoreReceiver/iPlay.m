@@ -4259,7 +4259,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         NSInteger previewReferenceMm =
             [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
         if (previewReferenceMm < 100 || previewReferenceMm > 400)
-            previewReferenceMm = 300;
+            previewReferenceMm = 200;
         previewReferenceMm =
             100 + (NSInteger)llround((previewReferenceMm - 100) / 50.0) * 50;
 
