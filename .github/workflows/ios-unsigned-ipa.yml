@@ -52,6 +52,14 @@ jobs:
           strings "$BIN" | grep -F "_remotepairing-pairable-host._tcp."
           strings "$BIN" | grep -F "LocalDevVPN"
 
+          # Real upstream UI / input controls must be in the shipped binary.
+          strings "$BIN" | grep -F "CarPlay settings"
+          strings "$BIN" | grep -F "Physical length"
+          strings "$BIN" | grep -F "OEM label"
+          strings "$BIN" | grep -F "Choose image"
+          strings "$BIN" | grep -F "2a2a2a2a"
+          test -s "$APP/ic_carplay.png"
+
           # Stock SideStore build must never instruct users to install jailbreak tooling.
           if strings "$BIN" | grep -F "Sileo"; then
             echo "ERROR: SideStore binary still contains Sileo/jailbreak install messaging"
