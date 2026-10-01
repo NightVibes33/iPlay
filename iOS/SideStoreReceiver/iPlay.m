@@ -3084,7 +3084,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (UIImage *)currentAirPlayIconImage {
     UIImage *custom = [UIImage imageWithContentsOfFile:[self airPlayCustomIconPath]];
-    return custom ?: [UIImage imageNamed:@"ic_carplay.png"];
+    return custom ?: [UIImage imageNamed:@"ic_car_home.png"];
 }
 
 - (UIImage *)squareAirPlayIconFromImage:(UIImage *)source {
@@ -3157,7 +3157,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 - (void)restoreDefaultAirPlayIconForPreview:(UIImageView *)preview {
     [[NSFileManager defaultManager] removeItemAtPath:[self airPlayCustomIconPath]
                                                error:nil];
-    preview.image = [UIImage imageNamed:@"ic_carplay.png"];
+    preview.image = [UIImage imageNamed:@"ic_car_home.png"];
     ip_log("[UI] custom AirPlay icon cleared");
 }
 
