@@ -1102,10 +1102,11 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
     NSInteger screenFPS = [screen respondsToSelector:
         @selector(maximumFramesPerSecond)] ? screen.maximumFramesPerSecond : 60;
     NSInteger requestedFPS = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
-    if (requestedFPS != 30 && requestedFPS != 60 && requestedFPS != 120)
-        requestedFPS = MIN(screenFPS, 60);
+    if (requestedFPS < 30 || requestedFPS > 60)
+        requestedFPS = 60;
+    requestedFPS = 30 + (NSInteger)llround((requestedFPS - 30) / 5.0) * 5;
     uint16_t framesPerSecond =
-        (uint16_t)MAX(30, MIN(requestedFPS, MAX(60, screenFPS)));
+        (uint16_t)MAX(30, MIN(requestedFPS, MIN(60, screenFPS)));
     CarPlayWLANAttachment wlanAttachment = wlan_attachment_class();
     if (wlanAttachment == CarPlayWLANAttachmentHSIC)
         framesPerSecond = MIN(framesPerSecond, 30);
@@ -1123,7 +1124,7 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
     if (memory >= 4ULL * 1024ULL * 1024ULL * 1024ULL && processors >= 6)
         pixelBudget = 1920ULL * 1080ULL;
     NSInteger scaleTenths = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayDisplayScaleTenths"];
-    if (scaleTenths != 8 && scaleTenths != 6) scaleTenths = 10;
+    if (scaleTenths < 3 || scaleTenths > 10) scaleTenths = 10;
     if (scaleTenths != 10) {
         double scale = scaleTenths / 10.0;
         pixelBudget = (uint64_t)((double)pixelBudget * scale * scale);
@@ -3083,7 +3084,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         @"iPlayLastMode", @"iPlayAutoConnect", @"iPlayAutoForeground",
         @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
-        @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport"
+        @"iPlayFullScreen", @"iPlayAudioFocus"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3254,59 +3255,122 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     display.backgroundColor = PANEL;
     display.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
-    [displayStack addArrangedSubview:[self upstreamLabel:@"CarPlay size" size:20 color:SECONDARY bold:NO]];
-    UISegmentedControl *physicalSize = [[UISegmentedControl alloc]
-        initWithItems:@[@"Large", @"Medium", @"Small"]];
-    NSInteger widthPhysical =
-        [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayPhysicalWidthMm"];
-    if (widthPhysical != 250 && widthPhysical != 300 && widthPhysical != 350)
-        widthPhysical = 300;
-    physicalSize.selectedSegmentIndex =
-        widthPhysical == 250 ? 0 : (widthPhysical == 300 ? 1 : 2);
-    physicalSize.selectedSegmentTintColor = ACCENT;
-    __weak UISegmentedControl *weakPhysicalSize = physicalSize;
-    [physicalSize addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        NSInteger index = weakPhysicalSize.selectedSegmentIndex;
-        NSInteger value = index == 0 ? 250 : (index == 1 ? 300 : 350);
-        [[NSUserDefaults standardUserDefaults]
-            setInteger:value forKey:@"iPlayPhysicalWidthMm"];
-    }] forControlEvents:UIControlEventValueChanged];
-    [displayStack addArrangedSubview:physicalSize];
-    [displayStack addArrangedSubview:[self upstreamLabel:
-        @"Changes the physical display width reported to CarPlay, which changes icon and text sizing."
-        size:14 color:SECONDARY bold:NO]];
+    UIStackView *physicalHeader = [[UIStackView alloc] init];
+    physicalHeader.axis = UILayoutConstraintAxisHorizontal;
+    physicalHeader.alignment = UIStackViewAlignmentCenter;
+    [physicalHeader addArrangedSubview:[self upstreamLabel:@"Physical length"
+                                                      size:20 color:SECONDARY bold:NO]];
+    UILabel *physicalValue = [self upstreamLabel:@"" size:24 color:ACCENT bold:YES];
+    [physicalHeader addArrangedSubview:[[UIView alloc] init]];
+    [physicalHeader addArrangedSubview:physicalValue];
+    [displayStack addArrangedSubview:physicalHeader];
 
-    [displayStack addArrangedSubview:[self upstreamLabel:@"Resolution" size:20 color:SECONDARY bold:NO]];
-    UISegmentedControl *resolution = [[UISegmentedControl alloc]
-        initWithItems:@[@"Native", @"80%", @"60%"]];
-    NSInteger scale = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayDisplayScaleTenths"];
-    if (scale != 8 && scale != 6) scale = 10;
-    resolution.selectedSegmentIndex = scale == 10 ? 0 : (scale == 8 ? 1 : 2);
-    resolution.selectedSegmentTintColor = ACCENT;
-    __weak UISegmentedControl *weakResolution = resolution;
-    [resolution addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        NSInteger index = weakResolution.selectedSegmentIndex;
-        NSInteger value = index == 0 ? 10 : (index == 1 ? 8 : 6);
-        [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayDisplayScaleTenths"];
-    }] forControlEvents:UIControlEventValueChanged];
-    [displayStack addArrangedSubview:resolution];
+    NSInteger widthPhysical = [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
+    if (widthPhysical < 100 || widthPhysical > 400) widthPhysical = 200;
+    widthPhysical = 100 + (NSInteger)llround((widthPhysical - 100) / 50.0) * 50;
+    physicalValue.text = [NSString stringWithFormat:@"%ld mm", (long)widthPhysical];
 
-    [displayStack addArrangedSubview:[self upstreamLabel:@"Frame rate" size:20 color:SECONDARY bold:NO]];
-    UISegmentedControl *fps = [[UISegmentedControl alloc] initWithItems:@[@"30", @"60", @"120"]];
-    NSInteger fpsValue = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
-    if (fpsValue != 30 && fpsValue != 60 && fpsValue != 120) fpsValue = 60;
-    fps.selectedSegmentIndex = fpsValue == 30 ? 0 : (fpsValue == 60 ? 1 : 2);
-    fps.selectedSegmentTintColor = ACCENT;
-    __weak UISegmentedControl *weakFPS = fps;
-    [fps addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    UISlider *physicalSlider = [[UISlider alloc] init];
+    physicalSlider.minimumValue = 0;
+    physicalSlider.maximumValue = 6;
+    physicalSlider.value = (widthPhysical - 100) / 50.0;
+    physicalSlider.minimumTrackTintColor = ACCENT;
+    physicalSlider.maximumTrackTintColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    __weak UISlider *weakPhysicalSlider = physicalSlider;
+    __weak UILabel *weakPhysicalValue = physicalValue;
+    [physicalSlider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        NSInteger index = weakFPS.selectedSegmentIndex;
-        NSInteger value = index == 0 ? 30 : (index == 1 ? 60 : 120);
-        [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayFrameRate"];
+        NSInteger step = (NSInteger)llround(weakPhysicalSlider.value);
+        weakPhysicalSlider.value = step;
+        NSInteger value = 100 + step * 50;
+        weakPhysicalValue.text = [NSString stringWithFormat:@"%ld mm", (long)value];
+        [settingsDefaults setInteger:value forKey:@"iPlayPhysicalWidthMm"];
     }] forControlEvents:UIControlEventValueChanged];
-    [displayStack addArrangedSubview:fps];
+    [displayStack addArrangedSubview:physicalSlider];
+
+    UIStackView *physicalRange = [[UIStackView alloc] init];
+    physicalRange.axis = UILayoutConstraintAxisHorizontal;
+    [physicalRange addArrangedSubview:[self upstreamLabel:@"100 mm" size:15 color:SECONDARY bold:NO]];
+    [physicalRange addArrangedSubview:[[UIView alloc] init]];
+    [physicalRange addArrangedSubview:[self upstreamLabel:@"400 mm" size:15 color:SECONDARY bold:NO]];
+    [displayStack addArrangedSubview:physicalRange];
+
+    UIStackView *resolutionHeader = [[UIStackView alloc] init];
+    resolutionHeader.axis = UILayoutConstraintAxisHorizontal;
+    resolutionHeader.alignment = UIStackViewAlignmentCenter;
+    [resolutionHeader addArrangedSubview:[self upstreamLabel:@"Resolution"
+                                                        size:20 color:SECONDARY bold:NO]];
+    UILabel *resolutionValue = [self upstreamLabel:@"" size:24 color:ACCENT bold:YES];
+    [resolutionHeader addArrangedSubview:[[UIView alloc] init]];
+    [resolutionHeader addArrangedSubview:resolutionValue];
+    [displayStack addArrangedSubview:resolutionHeader];
+
+    NSInteger scale = [settingsDefaults integerForKey:@"iPlayDisplayScaleTenths"];
+    if (scale < 3 || scale > 10) scale = 10;
+    resolutionValue.text =
+        [NSString stringWithFormat:@"%ld.%ldx", (long)(scale / 10), (long)(scale % 10)];
+
+    UISlider *resolutionSlider = [[UISlider alloc] init];
+    resolutionSlider.minimumValue = 3;
+    resolutionSlider.maximumValue = 10;
+    resolutionSlider.value = scale;
+    resolutionSlider.minimumTrackTintColor = ACCENT;
+    resolutionSlider.maximumTrackTintColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    __weak UISlider *weakResolutionSlider = resolutionSlider;
+    __weak UILabel *weakResolutionValue = resolutionValue;
+    [resolutionSlider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSInteger value = (NSInteger)llround(weakResolutionSlider.value);
+        value = MAX(3, MIN(10, value));
+        weakResolutionSlider.value = value;
+        weakResolutionValue.text =
+            [NSString stringWithFormat:@"%ld.%ldx", (long)(value / 10), (long)(value % 10)];
+        [settingsDefaults setInteger:value forKey:@"iPlayDisplayScaleTenths"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:resolutionSlider];
+
+    UIStackView *resolutionRange = [[UIStackView alloc] init];
+    resolutionRange.axis = UILayoutConstraintAxisHorizontal;
+    [resolutionRange addArrangedSubview:[self upstreamLabel:@"0.3x" size:15 color:SECONDARY bold:NO]];
+    [resolutionRange addArrangedSubview:[[UIView alloc] init]];
+    [resolutionRange addArrangedSubview:[self upstreamLabel:@"1.0x" size:15 color:SECONDARY bold:NO]];
+    [displayStack addArrangedSubview:resolutionRange];
+
+    UIStackView *fpsHeader = [[UIStackView alloc] init];
+    fpsHeader.axis = UILayoutConstraintAxisHorizontal;
+    fpsHeader.alignment = UIStackViewAlignmentCenter;
+    [fpsHeader addArrangedSubview:[self upstreamLabel:@"Frame rate"
+                                                 size:20 color:SECONDARY bold:NO]];
+    UILabel *fpsValueLabel = [self upstreamLabel:@"" size:24 color:ACCENT bold:YES];
+    [fpsHeader addArrangedSubview:[[UIView alloc] init]];
+    [fpsHeader addArrangedSubview:fpsValueLabel];
+    [displayStack addArrangedSubview:fpsHeader];
+
+    NSInteger fpsValue = [settingsDefaults integerForKey:@"iPlayFrameRate"];
+    if (fpsValue < 30 || fpsValue > 60) fpsValue = 60;
+    fpsValue = 30 + (NSInteger)llround((fpsValue - 30) / 5.0) * 5;
+    fpsValueLabel.text = [NSString stringWithFormat:@"%ld fps", (long)fpsValue];
+
+    UISlider *fpsSlider = [[UISlider alloc] init];
+    fpsSlider.minimumValue = 0;
+    fpsSlider.maximumValue = 6;
+    fpsSlider.value = (fpsValue - 30) / 5.0;
+    fpsSlider.minimumTrackTintColor = ACCENT;
+    fpsSlider.maximumTrackTintColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    __weak UISlider *weakFPSSlider = fpsSlider;
+    __weak UILabel *weakFPSValueLabel = fpsValueLabel;
+    [fpsSlider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSInteger step = (NSInteger)llround(weakFPSSlider.value);
+        weakFPSSlider.value = step;
+        NSInteger value = 30 + step * 5;
+        weakFPSValueLabel.text = [NSString stringWithFormat:@"%ld fps", (long)value];
+        [settingsDefaults setInteger:value forKey:@"iPlayFrameRate"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:fpsSlider];
 
     [displayStack addArrangedSubview:[self upstreamLabel:@"Music buffer" size:20 color:SECONDARY bold:NO]];
     UISegmentedControl *musicBuffer = [[UISegmentedControl alloc]
@@ -3444,40 +3508,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [audioStack addArrangedSubview:audioFocusRow];
     [root addArrangedSubview:audioCard];
 
-    [root addArrangedSubview:categoryLabel(@"Location")];
-    UIStackView *locationStack = nil;
-    UIView *locationCard =
-        [self upstreamSettingsCardWithTitle:@"Report location to iPhone" stack:&locationStack];
-    locationCard.backgroundColor = PANEL;
-    locationCard.layer.borderColor =
-        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
-    UIStackView *locationRow = [[UIStackView alloc] init];
-    locationRow.axis = UILayoutConstraintAxisHorizontal;
-    locationRow.alignment = UIStackViewAlignmentCenter;
-    locationRow.spacing = 16;
-    UIStackView *locationText = [[UIStackView alloc] init];
-    locationText.axis = UILayoutConstraintAxisVertical;
-    locationText.spacing = 5;
-    [locationText addArrangedSubview:[self upstreamLabel:
-        @"LocationInformation" size:20 color:SECONDARY bold:NO]];
-    [locationText addArrangedSubview:[self upstreamLabel:
-        @"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix to CarPlay after reconnect."
-        size:14 color:SECONDARY bold:NO]];
-    [locationRow addArrangedSubview:locationText];
-    UISwitch *locationSwitch = [[UISwitch alloc] init];
-    locationSwitch.onTintColor = ACCENT;
-    locationSwitch.on =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
-    __weak UISwitch *weakLocationSwitch = locationSwitch;
-    [locationSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        [[NSUserDefaults standardUserDefaults]
-            setBool:weakLocationSwitch.isOn forKey:@"iPlayLocationReport"];
-    }] forControlEvents:UIControlEventValueChanged];
-    [locationRow addArrangedSubview:locationSwitch];
-    [locationStack addArrangedSubview:locationRow];
-    [root addArrangedSubview:locationCard];
-
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
@@ -3499,7 +3529,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [root addArrangedSubview:localCard];
 
     UILabel *applyHint = [self upstreamLabel:
-        @"Size, resolution, frame rate, HEVC, driving side, music buffer, audio routing and A → A location reporting are applied by the real receiver runtime when the CarPlay session reconnects."
+        @"Physical size, resolution, frame rate, HEVC, driving side, music buffer and audio routing are applied by the real receiver runtime when the CarPlay session reconnects."
         size:15 color:SECONDARY bold:NO];
     [root addArrangedSubview:applyHint];
 
@@ -4139,8 +4169,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
              screenReceiveBuffer);
     NSInteger widthPhysicalMm =
         [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayPhysicalWidthMm"];
-    if (widthPhysicalMm != 250 && widthPhysicalMm != 300 &&
-        widthPhysicalMm != 350) widthPhysicalMm = 300;
+    if (widthPhysicalMm < 100 || widthPhysicalMm > 400)
+        widthPhysicalMm = 200;
+    widthPhysicalMm = 100 + (NSInteger)llround((widthPhysicalMm - 100) / 50.0) * 50;
+    widthPhysicalMm = MAX(100, MIN(400, widthPhysicalMm));
     BOOL rightHandDrive =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
