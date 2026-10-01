@@ -4137,9 +4137,104 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventTouchUpInside];
     [localStack addArrangedSubview:iosSettings];
 
-    UILabel *applyHint = [self upstreamLabel:
-        @"Physical size, resolution, frame rate, HEVC, driving side, music buffer, audio routing and A → A location reporting are applied by the real receiver runtime when the CarPlay session reconnects."
-        size:15 color:SECONDARY bold:NO];
+    UILabel *applyHint = [self upstreamLabel:@"" size:17 color:SECONDARY bold:NO];
+    applyHint.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
+
+    void (^refreshSettingsPreview)(void) = ^{
+        CarPlayDisplayProfile previewDisplay = preferred_carplay_display_profile();
+        NSString *previewManufacturer = [settingsDefaults stringForKey:@"iPlayManufacturer"];
+        NSString *previewModel = [settingsDefaults stringForKey:@"iPlayModel"];
+        NSString *previewOEM = [settingsDefaults stringForKey:@"iPlayOEMLabel"];
+        if (previewManufacturer.length == 0) previewManufacturer = @"DiPlay";
+        if (previewModel.length == 0) previewModel = @"DiPlay";
+        if (previewOEM.length == 0) previewOEM = @"BYD";
+
+        NSInteger previewReferenceMm =
+            [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
+        if (previewReferenceMm < 100 || previewReferenceMm > 400)
+            previewReferenceMm = 200;
+        previewReferenceMm =
+            100 + (NSInteger)llround((previewReferenceMm - 100) / 50.0) * 50;
+
+        NSInteger previewBasis =
+            [settingsDefaults integerForKey:@"iPlayPhysicalSizeBasis"] == 1 ? 1 : 0;
+        double maxW = MAX(1.0, (double)previewDisplay.nativeLong);
+        double maxH = MAX(1.0, (double)previewDisplay.nativeShort);
+        double curW = MAX(1.0, (double)previewDisplay.width);
+        double curH = MAX(1.0, (double)previewDisplay.height);
+        double referencePixels = previewBasis == 1 ? curH / maxH : curW / maxW;
+        double scaledReference = MAX(1.0, previewReferenceMm * referencePixels);
+        NSInteger previewPhysicalW = 1;
+        NSInteger previewPhysicalH = 1;
+        if (previewBasis == 1) {
+            previewPhysicalH = (NSInteger)llround(scaledReference);
+            previewPhysicalW = (NSInteger)llround(scaledReference * curW / curH);
+        } else {
+            previewPhysicalW = (NSInteger)llround(scaledReference);
+            previewPhysicalH = (NSInteger)llround(scaledReference * curH / curW);
+        }
+        previewPhysicalW = MAX(1, MIN(2000, previewPhysicalW));
+        previewPhysicalH = MAX(1, MIN(2000, previewPhysicalH));
+
+        BOOL previewRHD = [settingsDefaults boolForKey:@"iPlayRightHandDrive"];
+        BOOL previewHEVC = [settingsDefaults boolForKey:@"iPlayHEVC"];
+        BOOL previewFullscreen =
+            [settingsDefaults objectForKey:@"iPlayFullScreen"] == nil
+                ? YES : [settingsDefaults boolForKey:@"iPlayFullScreen"];
+        BOOL previewLocation = [settingsDefaults boolForKey:@"iPlayLocationReport"];
+
+        applyHint.text = [NSString stringWithFormat:
+            @"Resolution handshake: %u x %u\n"
+             "Identity: %@ / %@\n"
+             "OEM label: %@\n"
+             "Frame rate: %u fps\n"
+             "Detected maximum: %u x %u px\n"
+             "Physical reference: %@ = %ld mm\n"
+             "CarPlay physical size: %ld x %ld mm\n"
+             "Driving side: %@\n"
+             "Full screen: %@\n"
+             "Video transport: %@\n"
+             "Location reporting: %@\n"
+             "Safe area: %@",
+            previewDisplay.width, previewDisplay.height,
+            previewManufacturer, previewModel,
+            previewOEM,
+            previewDisplay.framesPerSecond,
+            previewDisplay.nativeLong, previewDisplay.nativeShort,
+            previewBasis == 1 ? @"longest height" : @"widest width",
+            (long)previewReferenceMm,
+            (long)previewPhysicalW, (long)previewPhysicalH,
+            previewRHD ? @"Right" : @"Left",
+            previewFullscreen ? @"On" : @"Off",
+            previewHEVC ? @"HEVC (H.265)" : @"H.264",
+            previewLocation ? @"Enabled" : @"Disabled",
+            safeSummary.text.length ? safeSummary.text : @"100.0% × 100.0% at (0.0%, 0.0%)"];
+    };
+
+    void (^wirePreview)(UIControl *, UIControlEvents) =
+        ^(UIControl *control, UIControlEvents events) {
+            [control addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+                (void)action;
+                refreshSettingsPreview();
+            }] forControlEvents:events];
+        };
+
+    wirePreview(manufacturerField, UIControlEventEditingChanged);
+    wirePreview(modelField, UIControlEventEditingChanged);
+    wirePreview(oemLabelField, UIControlEventEditingChanged);
+    wirePreview(physicalBasis, UIControlEventValueChanged);
+    wirePreview(physicalSlider, UIControlEventValueChanged);
+    wirePreview(resolutionSlider, UIControlEventValueChanged);
+    wirePreview(fpsSlider, UIControlEventValueChanged);
+    wirePreview(hevcSwitch, UIControlEventValueChanged);
+    wirePreview(rhdSwitch, UIControlEventValueChanged);
+    wirePreview(fullSwitch, UIControlEventValueChanged);
+    wirePreview(locationSwitch, UIControlEventValueChanged);
+    wirePreview(drawOutsideSwitch, UIControlEventValueChanged);
+    for (UISlider *safeSlider in safeSliders)
+        wirePreview(safeSlider, UIControlEventValueChanged);
+
+    refreshSettingsPreview();
 
     UIButton *save = [UIButton buttonWithType:UIButtonTypeCustom];
     [save setTitle:(self.state == StateActive ? @"Save and reconnect" : @"Save") forState:UIControlStateNormal];
