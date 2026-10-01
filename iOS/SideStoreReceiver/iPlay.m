@@ -2460,6 +2460,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, weak) VideoView *videoView;
 @property (nonatomic, weak) AppDelegate *appDelegate;
 @property (nonatomic, assign) BOOL fullscreenMode; /* iPhone Active bypass of the 1024x768 canvas */
+@property (nonatomic, strong) NSMapTable<UITouch *, NSNumber *> *touchSlots;
 @end
 
 @implementation RootViewController
@@ -2469,6 +2470,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     /* Preserve upstream two-contact CarPlay input and the three-finger
      * settings gesture instead of collapsing UIKit to one touch. */
     root.multipleTouchEnabled = YES;
+    self.touchSlots = [NSMapTable weakToStrongObjectsMapTable];
     self.view = root;
     self.contentView = root;
 }
@@ -2522,18 +2524,41 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     *outY = (uint16_t)(ny * ch);
     return YES;
 }
+- (NSNumber *)slotForTouch:(UITouch *)touch create:(BOOL)create {
+    NSNumber *existing = [self.touchSlots objectForKey:touch];
+    if (existing || !create) return existing;
+
+    NSArray<NSNumber *> *used = self.touchSlots.objectEnumerator.allObjects;
+    for (NSInteger slot = 0; slot < 2; slot++) {
+        NSNumber *candidate = @(slot);
+        if (![used containsObject:candidate]) {
+            [self.touchSlots setObject:candidate forKey:touch];
+            return candidate;
+        }
+    }
+    return nil;
+}
+
 - (void)handleTouches:(NSSet<UITouch *> *)touches
                 event:(UIEvent *)event
                 phase:(uint8_t)phase {
+    /*
+     * Upstream CarPlayTouchMapper exposes exactly two contacts. Keep stable
+     * UIKit touch -> HID slots 0/1; any third contact belongs to the
+     * three-finger settings recognizer and is never advertised to CarPlay.
+     */
     NSMutableData *records = [NSMutableData data];
     for (UITouch *touch in touches) {
+        NSNumber *slotNumber = [self slotForTouch:touch create:(phase == TOUCH_DOWN)];
+        if (!slotNumber) continue;
+        uint8_t contact = (uint8_t)slotNumber.unsignedIntegerValue;
+
         NSArray<UITouch *> *samples = nil;
         if (phase == TOUCH_MOVE) {
             samples = [event coalescedTouchesForTouch:touch];
         }
         if (samples.count == 0) samples = @[touch];
 
-        uint8_t contact = (uint8_t)(touch.hash & 0xff);
         for (UITouch *sample in samples) {
             uint16_t x = 0, y = 0;
             if (![self mapTouch:sample toX:&x y:&y]) continue;
@@ -2546,6 +2571,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             record[5] = y >> 8;
             memcpy(record + 6, &timestampNs, sizeof(timestampNs));
             [records appendBytes:record length:sizeof(record)];
+        }
+
+        if (phase == TOUCH_UP || phase == TOUCH_CANCEL) {
+            [self.touchSlots removeObjectForKey:touch];
         }
     }
     send_touch_records(records);
