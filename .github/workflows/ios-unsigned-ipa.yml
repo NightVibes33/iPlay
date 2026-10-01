@@ -2,7 +2,7 @@ name: Build unsigned iPlay IPA
 
 concurrency:
   group: ios-unsigned-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
