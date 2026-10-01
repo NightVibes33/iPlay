@@ -221,8 +221,18 @@ static void local_log(const char *fmt, ...) {
     fprintf(stderr, "[iPlay:LocalDevVPN] %s\n", rendered);
 
     pthread_mutex_lock(&g_local_log_lock);
+    NSArray<NSString *> *documents =
+        NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                            NSUserDomainMask, YES);
+    NSString *base = documents.firstObject ?: NSTemporaryDirectory();
+    NSString *logs = [base stringByAppendingPathComponent:@"iPlay Logs"];
+    [[NSFileManager defaultManager]
+        createDirectoryAtPath:logs
+  withIntermediateDirectories:YES
+                   attributes:nil
+                        error:nil];
     NSString *logPath =
-        [NSTemporaryDirectory() stringByAppendingPathComponent:@"iplay-localdevvpn.log"];
+        [logs stringByAppendingPathComponent:@"iplay-localdevvpn.log"];
     FILE *file = fopen(logPath.fileSystemRepresentation, "a");
     if (file) {
         struct timespec now;
