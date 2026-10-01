@@ -3708,9 +3708,16 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     __weak UIViewController *weakSettings = settings;
     [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
+        BOOL reconnect = (self.state == StateActive);
+        NSInteger mode = baselineMode;
         restoreBaseline();
         [weakSettings dismissViewControllerAnimated:YES completion:^{
-            [self renderState];
+            if (reconnect) {
+                [self stopFlow];
+                [self restartWhenIdleForMode:mode attemptsRemaining:100];
+            } else {
+                [self renderState];
+            }
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
 
