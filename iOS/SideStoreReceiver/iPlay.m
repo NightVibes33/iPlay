@@ -3128,7 +3128,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         @"iPlayLastMode", @"iPlayAutoConnect", @"iPlayAutoForeground",
         @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
-        @"iPlayFullScreen", @"iPlayAudioFocus"
+        @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3552,6 +3552,40 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [audioStack addArrangedSubview:audioFocusRow];
     [root addArrangedSubview:audioCard];
 
+    [root addArrangedSubview:categoryLabel(@"Location")];
+    UIStackView *locationStack = nil;
+    UIView *locationCard =
+        [self upstreamSettingsCardWithTitle:@"Report location to iPhone" stack:&locationStack];
+    locationCard.backgroundColor = PANEL;
+    locationCard.layer.borderColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    UIStackView *locationRow = [[UIStackView alloc] init];
+    locationRow.axis = UILayoutConstraintAxisHorizontal;
+    locationRow.alignment = UIStackViewAlignmentCenter;
+    locationRow.spacing = 16;
+    UIStackView *locationText = [[UIStackView alloc] init];
+    locationText.axis = UILayoutConstraintAxisVertical;
+    locationText.spacing = 5;
+    [locationText addArrangedSubview:
+        [self upstreamLabel:@"LocationInformation" size:20 color:SECONDARY bold:NO]];
+    [locationText addArrangedSubview:[self upstreamLabel:
+        @"A → A only. CarPlay requests the stream over iAP2; iPlay then sends the current GPS fix once per second."
+        size:14 color:SECONDARY bold:NO]];
+    [locationRow addArrangedSubview:locationText];
+
+    UISwitch *locationSwitch = [[UISwitch alloc] init];
+    locationSwitch.onTintColor = ACCENT;
+    locationSwitch.on = [settingsDefaults boolForKey:@"iPlayLocationReport"];
+    __weak UISwitch *weakLocationSwitch = locationSwitch;
+    [locationSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [settingsDefaults setBool:weakLocationSwitch.isOn forKey:@"iPlayLocationReport"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [locationRow addArrangedSubview:locationSwitch];
+    [locationStack addArrangedSubview:locationRow];
+    [root addArrangedSubview:locationCard];
+
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
@@ -3697,7 +3731,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 self.headlineLabel.text = @"Ready when you are";
                 self.subtitleLabel.text = @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.";
                 [self.primaryButton setTitle:@"Connect phone" forState:UIControlStateNormal];
-                [self.secondaryButton setTitle:@"Choose iPhone" forState:UIControlStateNormal];
+                [self.secondaryButton setTitle:@"Connection mode" forState:UIControlStateNormal];
                 [self.tertiaryButton setTitle:@"Settings" forState:UIControlStateNormal];
                 [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
                 self.secondaryButton.hidden = NO;
