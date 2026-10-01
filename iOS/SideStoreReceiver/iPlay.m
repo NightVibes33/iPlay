@@ -4898,8 +4898,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
+                    int trustedArgc =
+                        (int)(sizeof(argsTrusted) / sizeof(argsTrusted[0])) - 1;
+                    int normalArgc =
+                        (int)(sizeof(argsNormal) / sizeof(argsNormal[0])) - 1;
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 36 : 35,
+                        trustedAtoA ? trustedArgc : normalArgc,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
