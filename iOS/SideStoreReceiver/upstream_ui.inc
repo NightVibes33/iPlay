@@ -826,7 +826,7 @@
                       options:@[@"30 fps · lighter load", @"60 fps · smoother motion"]
                        values:@[@30, @60]
                    currentKey:@"iPlayFrameRate"
-                 defaultValue:60];
+                 defaultValue:30];
 
     [self upstreamAddToggleTo:displayStack
                         title:@"Efficient video"
@@ -860,7 +860,7 @@
                                             symbol:@"speaker.wave.2"
                                              stack:&audioStack];
     BOOL focus = [defaults objectForKey:@"iPlayAudioFocus"] == nil
-        ? YES : [defaults boolForKey:@"iPlayAudioFocus"];
+        ? NO : [defaults boolForKey:@"iPlayAudioFocus"];
     [self upstreamAddToggleTo:audioStack
                         title:@"Audio focus"
                   description:@"Let CarPlay audio take primary playback focus instead of mixing with other iPhone audio."
