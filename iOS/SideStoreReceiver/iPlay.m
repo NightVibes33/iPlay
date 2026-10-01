@@ -3391,6 +3391,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         if (mode < 0 || mode > 2) mode = 0;
         self.sideStoreMode = mode;
         [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
+        if (mode == 2 && ![settingsDefaults stringForKey:@"iPlayRemoteReceiverHost"].length) {
+            [self chooseRemoteAtoBReceiverFrom:settings connectAfterSelection:NO];
+        }
     }] forControlEvents:UIControlEventValueChanged];
     [connectionStack addArrangedSubview:modeSelector];
     [root addArrangedSubview:connection];
@@ -4621,6 +4624,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 /* ─── Action helpers ───────────────────────────────────────── */
 
 - (void)attemptStart {
+    if (iPlayIsStockSideStoreBuild() && self.sideStoreMode == 2) {
+        [self startRemoteAtoB];
+        return;
+    }
     /* Jailbreak mode still needs the receiver hotspot. SideStore modes do not. */
     if (!iPlayIsStockSideStoreBuild() && ![self.cars apReady]) { [self showWifiSetup]; return; }
     /* A SideStore A->A receiver is this app itself; it must not require a
