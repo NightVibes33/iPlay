@@ -62,6 +62,7 @@ jobs:
           strings "$BIN" | grep -F "Manufacturer"
           strings "$BIN" | grep -F "2a2a2a2a"
           test -s "$APP/ic_carplay.png"
+          test -s "$APP/ic_car_home.png"
 
           # Stock SideStore build must never instruct users to install jailbreak tooling.
           if strings "$BIN" | grep -F "Sileo"; then
