@@ -109,6 +109,13 @@ static void local_log(const char *fmt, ...);
     });
 }
 - (CLLocation *)freshLocation {
+    if (@available(iOS 14.0, *)) {
+        if (!self.manager ||
+            self.manager.accuracyAuthorization !=
+                CLAccuracyAuthorizationFullAccuracy) {
+            return nil;
+        }
+    }
     @synchronized (self) {
         CLLocation *location = self.latestLocation;
         if (!location || location.horizontalAccuracy < 0) return nil;
