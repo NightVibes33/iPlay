@@ -3277,7 +3277,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel",
         @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
         @"iPlaySafeRightPm", @"iPlaySafeBottomPm",
-        @"iPlaySafeDrawOutside"
+        @"iPlaySafeDrawOutside",
+        @"iPlayRemoteReceiverName", @"iPlayRemoteReceiverHost",
+        @"iPlayRemoteReceiverPort"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
