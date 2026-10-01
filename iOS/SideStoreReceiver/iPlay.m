@@ -2828,13 +2828,22 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     return [CLLocationManager authorizationStatus];
 }
 
+- (BOOL)carPlayLocationHasFullAccuracy {
+    if (@available(iOS 14.0, *)) {
+        return self.settingsLocationManager &&
+               self.settingsLocationManager.accuracyAuthorization ==
+                   CLAccuracyAuthorizationFullAccuracy;
+    }
+    return YES;
+}
+
 - (void)showCarPlayLocationPermissionHelp {
     UIViewController *presenter = [self topPresenter];
     if (!presenter.presentedViewController ||
         ![presenter.presentedViewController isKindOfClass:[UIAlertController class]]) {
         UIAlertController *alert =
             [UIAlertController alertControllerWithTitle:@"Location permission needed"
-                message:@"Enable Location for iPlay in iOS Settings to report this iPhone’s position to CarPlay."
+                message:@"Enable Location and Precise Location for iPlay in iOS Settings to report this iPhone’s position to CarPlay."
                 preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
             style:UIAlertActionStyleCancel handler:nil]];
@@ -2871,12 +2880,28 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         [self showCarPlayLocationPermissionHelp];
         return NO;
     }
+    if ((status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+         status == kCLAuthorizationStatusAuthorizedAlways) &&
+        ![self carPlayLocationHasFullAccuracy]) {
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
+        self.locationSettingsSwitch.on = NO;
+        [self showCarPlayLocationPermissionHelp];
+        return NO;
+    }
     return YES;
 }
 
 - (void)handleCarPlayLocationAuthorizationStatus:(CLAuthorizationStatus)status {
-    if (status == kCLAuthorizationStatusDenied ||
-        status == kCLAuthorizationStatusRestricted) {
+    BOOL denied = status == kCLAuthorizationStatusDenied ||
+                  status == kCLAuthorizationStatusRestricted;
+    BOOL reduced = NO;
+    if (@available(iOS 14.0, *)) {
+        reduced =
+            (status == kCLAuthorizationStatusAuthorizedWhenInUse ||
+             status == kCLAuthorizationStatusAuthorizedAlways) &&
+            ![self carPlayLocationHasFullAccuracy];
+    }
+    if (denied || reduced) {
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"]) {
             [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
             self.locationSettingsSwitch.on = NO;
