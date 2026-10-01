@@ -3014,7 +3014,22 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)upstreamHomeTapped {
-    if (self.state == StateIdle) [self renderState];
+    /*
+     * Upstream DiPlay sends the Android head unit to HOME. On iOS there is no
+     * public equivalent, so use UIApplication's existing private suspend
+     * selector when available; terminating is the last-resort sideload fallback.
+     * This button must never be a visual no-op.
+     */
+    UIApplication *app = [UIApplication sharedApplication];
+    SEL suspendSelector = NSSelectorFromString(@"suspend");
+    if ([app respondsToSelector:suspendSelector]) {
+        IMP implementation = [app methodForSelector:suspendSelector];
+        if (implementation) {
+            ((void (*)(id, SEL))implementation)(app, suspendSelector);
+            return;
+        }
+    }
+    exit(0);
 }
 
 - (void)receiverTapped {
