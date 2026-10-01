@@ -91,7 +91,9 @@ runtime_keys = (
     "iPlayRemoteReceiverPort",
 )
 for key in runtime_keys:
-    if key not in settings_body:
+    # One occurrence is the trackedKeys rollback snapshot. Require at least one
+    # additional UI read/write so deleting the real control cannot pass CI.
+    if settings_body.count(key) < 2:
         raise SystemExit(f"expected real settings control/key is missing from shared surface: {key}")
     if key not in runtime_source:
         raise SystemExit(f"settings key has no runtime consumer outside the UI: {key}")
