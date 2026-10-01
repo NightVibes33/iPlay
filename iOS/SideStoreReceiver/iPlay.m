@@ -2738,6 +2738,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)buildUpstreamHomeReal;
 - (void)layoutUpstreamHomeReal;
 - (void)showUpstreamSettingsReal;
+- (void)startRemoteAtoB;
 
 /* Lifecycle */
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
@@ -4298,37 +4299,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"Connect This iPhone to Another iPlay (A → B)"
         style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            self.sideStoreMode = 2;
-            self.headlineLabel.text = @"Finding iPlay";
-            self.subtitleLabel.text = @"Looking for a receiver on the local network…";
-            dispatch_async(self.bgQueue, ^{
-                NSString *host = iPlayDiscoverRemoteCarPlayReceiver(5.0);
-                BOOL ok = host.length ? iPlayStartRemoteCarPlaySession(@"iPlay", host, 7000) : NO;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (ok) {
-                        self.headlineLabel.text = @"Starting CarPlay";
-                        self.subtitleLabel.text = [NSString stringWithFormat:@"Connecting to %@", host];
-                        return;
-                    }
-
-                    UIAlertController *prompt = [UIAlertController alertControllerWithTitle:@"Receiver Not Found"
-                        message:@"Make sure the other iPhone is running iPlay in Receive mode on the same network, or enter its IPv6/local hostname manually."
-                        preferredStyle:UIAlertControllerStyleAlert];
-                    [prompt addTextFieldWithConfigurationHandler:^(UITextField *f) {
-                        f.placeholder = @"fe80::…%en0 or receiver.local";
-                        f.autocapitalizationType = UITextAutocapitalizationTypeNone;
-                        f.autocorrectionType = UITextAutocorrectionTypeNo;
-                    }];
-                    [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-                    [prompt addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
-                        NSString *manualHost = prompt.textFields.firstObject.text;
-                        BOOL manualOK = iPlayStartRemoteCarPlaySession(@"iPlay", manualHost, 7000);
-                        self.headlineLabel.text = manualOK ? @"Starting CarPlay" : @"Could not start CarPlay";
-                        self.subtitleLabel.text = manualOK ? [NSString stringWithFormat:@"Connecting to %@", manualHost] : @"CarKit session request was unavailable.";
-                    }]];
-                    [self.vc presentViewController:prompt animated:YES completion:nil];
-                });
-            });
+            [self startRemoteAtoB];
         }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     if (sheet.popoverPresentationController) {
@@ -4336,6 +4307,53 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         sheet.popoverPresentationController.sourceRect = self.primaryButton.bounds;
     }
     [self.vc presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)startRemoteAtoB {
+    self.sideStoreMode = 2;
+    self.headlineLabel.text = @"Finding iPlay";
+    self.subtitleLabel.text = @"Looking for a receiver on the local network…";
+    dispatch_async(self.bgQueue, ^{
+        NSString *host = iPlayDiscoverRemoteCarPlayReceiver(5.0);
+        BOOL ok = host.length
+            ? iPlayStartRemoteCarPlaySession(@"iPlay", host, 7000)
+            : NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (ok) {
+                self.headlineLabel.text = @"Starting CarPlay";
+                self.subtitleLabel.text =
+                    [NSString stringWithFormat:@"Connecting to %@", host];
+                return;
+            }
+
+            UIAlertController *prompt =
+                [UIAlertController alertControllerWithTitle:@"Receiver Not Found"
+                    message:@"Make sure the other iPhone is running iPlay in Receive mode on the same network, or enter its IPv6/local hostname manually."
+                    preferredStyle:UIAlertControllerStyleAlert];
+            [prompt addTextFieldWithConfigurationHandler:^(UITextField *field) {
+                field.placeholder = @"fe80::…%en0 or receiver.local";
+                field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+                field.autocorrectionType = UITextAutocorrectionTypeNo;
+            }];
+            [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                style:UIAlertActionStyleCancel handler:nil]];
+            [prompt addAction:[UIAlertAction actionWithTitle:@"Connect"
+                style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+                    NSString *manualHost =
+                        [prompt.textFields.firstObject.text
+                            stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    BOOL manualOK = manualHost.length > 0 &&
+                        iPlayStartRemoteCarPlaySession(@"iPlay", manualHost, 7000);
+                    self.headlineLabel.text =
+                        manualOK ? @"Starting CarPlay" : @"Could not start CarPlay";
+                    self.subtitleLabel.text = manualOK
+                        ? [NSString stringWithFormat:@"Connecting to %@", manualHost]
+                        : @"CarKit session request was unavailable.";
+                }]];
+            [self.vc presentViewController:prompt animated:YES completion:nil];
+        });
+    });
 }
 
 - (void)primaryTapped {
