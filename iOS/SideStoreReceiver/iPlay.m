@@ -3017,6 +3017,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 @property (nonatomic, copy) NSString *pendingBluetoothErrorTitle;
 @property (nonatomic, copy) NSString *pendingBluetoothErrorExplanation;
 @property (nonatomic, copy) NSString *pendingBluetoothDiagnostic;
+@property (nonatomic, copy) NSString *lastStartupFailure;
 
 /* Networking */
 @property (nonatomic, assign) int listenFd;
@@ -4893,8 +4894,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     self.headlineLabel.text = @"CarPlay on this iPhone";
                     [self.primaryButton setTitle:@"Connect phone"
                                        forState:UIControlStateNormal];
-                    self.subtitleLabel.text =
-                        @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.\nA → A uses LocalDevVPN + trusted Remote Pairing.";
+                    self.subtitleLabel.text = self.lastStartupFailure.length
+                        ? [NSString stringWithFormat:@"Last start failed: %@\nTap Connect phone to retry.", self.lastStartupFailure]
+                        : @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.\nA → A uses LocalDevVPN + trusted Remote Pairing.";
                 }
 
                 self.secondaryButton.hidden = NO;
@@ -5299,6 +5301,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 - (void)primaryTapped {
     switch (self.state) {
         case StateIdle:
+            self.lastStartupFailure = nil;
             if (iPlayIsStockSideStoreBuild()) {
                 if (self.sideStoreMode == 2) [self startRemoteAtoB];
                 else [self attemptStart];
@@ -6079,7 +6082,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 }
 
 - (void)failWith:(NSString *)reason {
-    ip_log("FAIL: %s", [reason UTF8String]);
+    NSString *message = reason.length ? reason : @"Unknown CarPlay startup failure";
+    self.lastStartupFailure = message;
+    ip_log("FAIL: %s", message.UTF8String);
     [self stopFlow];
 }
 
@@ -6731,6 +6736,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [text appendFormat:@"Background audio keep-alive requested: %@\n",
                        [IPlayBackgroundAudioKeeper shared].requested ? @"yes" : @"no"];
     [text appendFormat:@"AirPlay receiver ready: %d\n", g_iPlayAirPlayServerReady ? 1 : 0];
+    [text appendFormat:@"Last startup failure: %@\n",
+                       self.lastStartupFailure.length ? self.lastStartupFailure : @"none"];
 
     NSArray<NSDictionary *> *sources = @[
         @{@"title": @"APP LOG", @"path": iPlaySandboxLogPath(@"iplay-app.log")},
