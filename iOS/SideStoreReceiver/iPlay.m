@@ -4885,6 +4885,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             self.sideStoreMode = 0;
                             [[NSUserDefaults standardUserDefaults]
                                 setInteger:0 forKey:@"iPlayLastMode"];
+                            UIButton *choosePhoneButton =
+                                (UIButton *)[hostController.view viewWithTag:0x49504348];
+                            if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
+                                [choosePhoneButton setTitle:@"Choose iPhone · This iPhone"
+                                                   forState:UIControlStateNormal];
+                            }
                             [self renderState];
                             if (connectAfterSelection) [self attemptStart];
                         }]];
@@ -4925,6 +4931,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             self.sideStoreMode = 0;
                             [[NSUserDefaults standardUserDefaults]
                                 setInteger:0 forKey:@"iPlayLastMode"];
+                            UIButton *choosePhoneButton =
+                                (UIButton *)[hostController.view viewWithTag:0x49504348];
+                            if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
+                                [choosePhoneButton setTitle:@"Choose iPhone · This iPhone"
+                                                   forState:UIControlStateNormal];
+                            }
                             [self renderState];
                             if (connectAfterSelection) [self attemptStart];
                         }]];
