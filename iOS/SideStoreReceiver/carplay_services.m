@@ -3028,8 +3028,6 @@ static dispatch_semaphore_t g_app_send_lock = NULL;
 static volatile bool g_app_video_enabled = true;
 
 void iPlayCarPlayServiceSetAppSocket(int fd) {
-    if (fd < 0) return;
-
     if (g_app_send_lock)
         dispatch_semaphore_wait(g_app_send_lock, DISPATCH_TIME_FOREVER);
 
@@ -3044,9 +3042,13 @@ void iPlayCarPlayServiceSetAppSocket(int fd) {
         g_app_fd = -1;
     }
 
-    g_app_fd = fd;
     g_app_port = 0;
-    printf("[SCREEN] Installed fresh in-process app IPC fd=%d\n", fd);
+    if (fd >= 0) {
+        g_app_fd = fd;
+        printf("[SCREEN] Installed fresh in-process app IPC fd=%d\n", fd);
+    } else {
+        printf("[SCREEN] Cleared stale in-process app IPC; loopback fallback may be used\n");
+    }
 
     if (g_app_send_lock)
         dispatch_semaphore_signal(g_app_send_lock);
