@@ -6984,9 +6984,17 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
          * It avoids Local Network policy, port races, and filesystem sockets.
          */
         if (self.clientFd >= 0) {
+            shutdown(self.clientFd, SHUT_RDWR);
             close(self.clientFd);
             self.clientFd = -1;
         }
+
+        /*
+         * Drop any receiver-side endpoint from the previous attempt before
+         * allocating the next transport. This both wakes stale readers and
+         * releases the fd before socketpair()/loopback allocation.
+         */
+        iPlayCarPlayServiceSetAppSocket(-1);
 
         int pair[2] = { -1, -1 };
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0) {
@@ -7042,8 +7050,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
          * transient socketpair resource failure can never surface as the old
          * generic 'IPC listener failed' error.
          */
-        iPlayCarPlayServiceSetAppSocket(-1); /* clear stale service IPC */
-
         int fd = socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) {
             int socketErrno = errno;
