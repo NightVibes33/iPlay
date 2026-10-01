@@ -3209,7 +3209,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     NSUserDefaults *settingsDefaults = [NSUserDefaults standardUserDefaults];
     NSArray<NSString *> *trackedKeys = @[
         @"iPlayLastMode", @"iPlayAutoConnect", @"iPlayAutoForeground",
-        @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
+        @"iPlayPhysicalWidthMm", @"iPlayPhysicalSizeBasis",
+        @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
         @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
         @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel"
@@ -3535,6 +3536,22 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIView *display = [self upstreamSettingsCardWithTitle:@"Active CarPlay display" stack:&displayStack];
     display.backgroundColor = PANEL;
     display.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    [displayStack addArrangedSubview:
+        [self upstreamLabel:@"Physical size basis" size:20 color:SECONDARY bold:NO]];
+    UISegmentedControl *physicalBasis = [[UISegmentedControl alloc]
+        initWithItems:@[@"Widest width", @"Longest height"]];
+    NSInteger physicalBasisValue =
+        [settingsDefaults integerForKey:@"iPlayPhysicalSizeBasis"] == 1 ? 1 : 0;
+    physicalBasis.selectedSegmentIndex = physicalBasisValue;
+    physicalBasis.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakPhysicalBasis = physicalBasis;
+    [physicalBasis addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [settingsDefaults setInteger:(weakPhysicalBasis.selectedSegmentIndex == 1 ? 1 : 0)
+                              forKey:@"iPlayPhysicalSizeBasis"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:physicalBasis];
 
     UIStackView *physicalHeader = [[UIStackView alloc] init];
     physicalHeader.axis = UILayoutConstraintAxisHorizontal;
@@ -4471,7 +4488,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
-    char widthPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
+    char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     CarPlayDisplayProfile display = preferred_carplay_display_profile();
     uint16_t displayWidth = display.width;
     uint16_t displayHeight = display.height;
@@ -4492,12 +4509,38 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
     snprintf(receiveBufferBuf, sizeof(receiveBufferBuf), "%d",
              screenReceiveBuffer);
-    NSInteger widthPhysicalMm =
-        [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayPhysicalWidthMm"];
-    if (widthPhysicalMm < 100 || widthPhysicalMm > 400)
-        widthPhysicalMm = 200;
-    widthPhysicalMm = 100 + (NSInteger)llround((widthPhysicalMm - 100) / 50.0) * 50;
-    widthPhysicalMm = MAX(100, MIN(400, widthPhysicalMm));
+    NSInteger referencePhysicalMm =
+        [runtimeDefaults integerForKey:@"iPlayPhysicalWidthMm"];
+    if (referencePhysicalMm < 100 || referencePhysicalMm > 400)
+        referencePhysicalMm = 200;
+    referencePhysicalMm =
+        100 + (NSInteger)llround((referencePhysicalMm - 100) / 50.0) * 50;
+    referencePhysicalMm = MAX(100, MIN(400, referencePhysicalMm));
+
+    NSInteger physicalSizeBasis =
+        [runtimeDefaults integerForKey:@"iPlayPhysicalSizeBasis"] == 1 ? 1 : 0;
+    double maximumWidthPixels = MAX(1.0, (double)display.nativeLong);
+    double maximumHeightPixels = MAX(1.0, (double)display.nativeShort);
+    double currentWidthPixels = MAX(1.0, (double)displayWidth);
+    double currentHeightPixels = MAX(1.0, (double)displayHeight);
+    double referencePixels = physicalSizeBasis == 1
+        ? currentHeightPixels / maximumHeightPixels
+        : currentWidthPixels / maximumWidthPixels;
+    double scaledReferenceMm = MAX(1.0, (double)referencePhysicalMm * referencePixels);
+    NSInteger widthPhysicalMm = 1;
+    NSInteger heightPhysicalMm = 1;
+    if (physicalSizeBasis == 1) {
+        heightPhysicalMm = (NSInteger)llround(scaledReferenceMm);
+        widthPhysicalMm = (NSInteger)llround(
+            scaledReferenceMm * currentWidthPixels / currentHeightPixels);
+    } else {
+        widthPhysicalMm = (NSInteger)llround(scaledReferenceMm);
+        heightPhysicalMm = (NSInteger)llround(
+            scaledReferenceMm * currentHeightPixels / currentWidthPixels);
+    }
+    widthPhysicalMm = MAX(1, MIN(2000, widthPhysicalMm));
+    heightPhysicalMm = MAX(1, MIN(2000, heightPhysicalMm));
+
     BOOL rightHandDrive =
         [runtimeDefaults boolForKey:@"iPlayRightHandDrive"];
     BOOL hevcEnabled = [runtimeDefaults boolForKey:@"iPlayHEVC"];
@@ -4505,16 +4548,19 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     snprintf(modelBuf, sizeof(modelBuf), "%s", modelName.UTF8String);
     snprintf(oemLabelBuf, sizeof(oemLabelBuf), "%s", oemLabel.UTF8String);
     snprintf(widthPhysicalBuf, sizeof(widthPhysicalBuf), "%ld", (long)widthPhysicalMm);
+    snprintf(heightPhysicalBuf, sizeof(heightPhysicalBuf), "%ld", (long)heightPhysicalMm);
     snprintf(rightHandDriveBuf, sizeof(rightHandDriveBuf), "%d", rightHandDrive ? 1 : 0);
     snprintf(hevcBuf, sizeof(hevcBuf), "%d", hevcEnabled ? 1 : 0);
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
-           "budget=%llu pixels selected=%ux%u@%u wlan=%s rcvbuf=%d "
-           "policy=hardware-only layout=ignored",
+           "budget=%llu pixels selected=%ux%u@%u physical=%ldx%ldmm basis=%s "
+           "wlan=%s rcvbuf=%d policy=hardware-only layout=ignored",
            display.nativeLong, display.nativeShort,
            (unsigned long long)(display.physicalMemory / (1024ULL * 1024ULL)),
            (unsigned long)display.activeProcessors,
            (unsigned long long)display.pixelBudget,
            displayWidth, displayHeight, display.framesPerSecond,
+           (long)widthPhysicalMm, (long)heightPhysicalMm,
+           physicalSizeBasis == 1 ? "height" : "width",
            carplay_wlan_attachment_name(display.wlanAttachment),
            screenReceiveBuffer);
     char *svcArgv[] = {
@@ -4528,6 +4574,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         (char*)"--fps", fpsBuf,
         (char*)"--screen-rcvbuf", receiveBufferBuf,
         (char*)"--width-physical-mm", widthPhysicalBuf,
+        (char*)"--height-physical-mm", heightPhysicalBuf,
         (char*)"--right-hand-drive", rightHandDriveBuf,
         (char*)"--hevc", hevcBuf,
         NULL
@@ -4548,13 +4595,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
+            NSInteger heightPhysicalCopy = heightPhysicalMm;
             BOOL rightHandDriveCopy = rightHandDrive;
             BOOL hevcEnabledCopy = hevcEnabled;
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
                     char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
-                    char widthPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
+                    char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
@@ -4565,6 +4613,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
                     snprintf(widthPhysicalArg, sizeof(widthPhysicalArg), "%ld",
                              (long)widthPhysicalCopy);
+                    snprintf(heightPhysicalArg, sizeof(heightPhysicalArg), "%ld",
+                             (long)heightPhysicalCopy);
                     snprintf(rightHandDriveArg, sizeof(rightHandDriveArg), "%d",
                              rightHandDriveCopy ? 1 : 0);
                     snprintf(hevcArg, sizeof(hevcArg), "%d",
@@ -4589,6 +4639,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
                         (char *)"--width-physical-mm", widthPhysicalArg,
+                        (char *)"--height-physical-mm", heightPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
                         (char *)"--hevc", hevcArg,
                         (char *)"--local-simulator",
@@ -4605,13 +4656,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
                         (char *)"--width-physical-mm", widthPhysicalArg,
+                        (char *)"--height-physical-mm", heightPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
                         (char *)"--hevc", hevcArg,
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 24 : 23,
+                        trustedAtoA ? 26 : 25,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
