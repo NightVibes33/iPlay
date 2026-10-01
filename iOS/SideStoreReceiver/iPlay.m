@@ -2602,6 +2602,234 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @end
 
 
+typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
+    IPlaySafeAreaEdgeNone = -1,
+    IPlaySafeAreaEdgeLeft = 0,
+    IPlaySafeAreaEdgeTop,
+    IPlaySafeAreaEdgeRight,
+    IPlaySafeAreaEdgeBottom,
+};
+
+/* UIKit port of upstream SafeAreaEditorView: dim everything outside the
+ * selected rectangle and drag any of the four boundaries directly. */
+@interface IPlaySafeAreaEditorView : UIView
+@property (nonatomic, assign) CGRect normalizedRect;
+@property (nonatomic, assign) NSInteger sourceWidth;
+@property (nonatomic, assign) NSInteger sourceHeight;
+@property (nonatomic, assign) IPlaySafeAreaEdge activeEdge;
+- (void)setPerMilleLeft:(NSInteger)left
+                    top:(NSInteger)top
+                  right:(NSInteger)right
+                 bottom:(NSInteger)bottom;
+- (void)getPerMilleLeft:(NSInteger *)left
+                    top:(NSInteger *)top
+                  right:(NSInteger *)right
+                 bottom:(NSInteger *)bottom;
+@end
+
+@implementation IPlaySafeAreaEditorView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [UIColor blackColor];
+        self.multipleTouchEnabled = NO;
+        _normalizedRect = CGRectMake(0, 0, 1, 1);
+        _sourceWidth = 1000;
+        _sourceHeight = 1000;
+        _activeEdge = IPlaySafeAreaEdgeNone;
+    }
+    return self;
+}
+
+- (void)setPerMilleLeft:(NSInteger)left
+                    top:(NSInteger)top
+                  right:(NSInteger)right
+                 bottom:(NSInteger)bottom {
+    left = MAX(0, MIN(999, left));
+    top = MAX(0, MIN(999, top));
+    right = MAX(left + 1, MIN(1000, right));
+    bottom = MAX(top + 1, MIN(1000, bottom));
+    self.normalizedRect = CGRectMake(left / 1000.0,
+                                     top / 1000.0,
+                                     (right - left) / 1000.0,
+                                     (bottom - top) / 1000.0);
+    [self setNeedsDisplay];
+}
+
+- (void)getPerMilleLeft:(NSInteger *)left
+                    top:(NSInteger *)top
+                  right:(NSInteger *)right
+                 bottom:(NSInteger *)bottom {
+    NSInteger l = (NSInteger)llround(CGRectGetMinX(self.normalizedRect) * 1000.0);
+    NSInteger t = (NSInteger)llround(CGRectGetMinY(self.normalizedRect) * 1000.0);
+    NSInteger r = (NSInteger)llround(CGRectGetMaxX(self.normalizedRect) * 1000.0);
+    NSInteger b = (NSInteger)llround(CGRectGetMaxY(self.normalizedRect) * 1000.0);
+    if (left) *left = MAX(0, MIN(999, l));
+    if (top) *top = MAX(0, MIN(999, t));
+    if (right) *right = MAX(1, MIN(1000, r));
+    if (bottom) *bottom = MAX(1, MIN(1000, b));
+}
+
+- (CGRect)editorRect {
+    CGRect bounds = self.bounds;
+    return CGRectMake(bounds.size.width * CGRectGetMinX(self.normalizedRect),
+                      bounds.size.height * CGRectGetMinY(self.normalizedRect),
+                      bounds.size.width * self.normalizedRect.size.width,
+                      bounds.size.height * self.normalizedRect.size.height);
+}
+
+- (void)drawLabel:(NSString *)text atPoint:(CGPoint)point {
+    NSDictionary *attrs = @{
+        NSFontAttributeName: [UIFont monospacedSystemFontOfSize:15
+                                                        weight:UIFontWeightRegular],
+        NSForegroundColorAttributeName: [UIColor whiteColor]
+    };
+    CGSize size = [text sizeWithAttributes:attrs];
+    CGFloat x = MAX(4, MIN(self.bounds.size.width - size.width - 4, point.x));
+    CGFloat y = MAX(4, MIN(self.bounds.size.height - size.height - 4, point.y));
+    [text drawAtPoint:CGPointMake(x, y) withAttributes:attrs];
+}
+
+- (void)drawRect:(CGRect)rect {
+    (void)rect;
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+
+    CGRect safe = [self editorRect];
+    CGRect bounds = self.bounds;
+    UIColor *dim = [UIColor colorWithWhite:0 alpha:118.0/255.0];
+    CGContextSetFillColorWithColor(ctx, dim.CGColor);
+    CGContextFillRect(ctx, CGRectMake(0, 0, bounds.size.width, CGRectGetMinY(safe)));
+    CGContextFillRect(ctx, CGRectMake(0, CGRectGetMaxY(safe),
+                                      bounds.size.width,
+                                      MAX(0, bounds.size.height - CGRectGetMaxY(safe))));
+    CGContextFillRect(ctx, CGRectMake(0, CGRectGetMinY(safe),
+                                      CGRectGetMinX(safe), safe.size.height));
+    CGContextFillRect(ctx, CGRectMake(CGRectGetMaxX(safe), CGRectGetMinY(safe),
+                                      MAX(0, bounds.size.width - CGRectGetMaxX(safe)),
+                                      safe.size.height));
+
+    CGContextSetStrokeColorWithColor(ctx,
+        [UIColor colorWithRed:1 green:1 blue:1 alpha:210.0/255.0].CGColor);
+    CGContextSetLineWidth(ctx, 1.0);
+    CGContextStrokeRect(ctx, safe);
+
+    UIColor *accent = [UIColor colorWithRed:127/255.0 green:205/255.0 blue:154/255.0 alpha:1];
+    CGContextSetStrokeColorWithColor(ctx, accent.CGColor);
+    CGContextSetLineWidth(ctx, 3.0);
+    CGContextMoveToPoint(ctx, CGRectGetMinX(safe), 0);
+    CGContextAddLineToPoint(ctx, CGRectGetMinX(safe), bounds.size.height);
+    CGContextMoveToPoint(ctx, CGRectGetMaxX(safe), 0);
+    CGContextAddLineToPoint(ctx, CGRectGetMaxX(safe), bounds.size.height);
+    CGContextMoveToPoint(ctx, 0, CGRectGetMinY(safe));
+    CGContextAddLineToPoint(ctx, bounds.size.width, CGRectGetMinY(safe));
+    CGContextMoveToPoint(ctx, 0, CGRectGetMaxY(safe));
+    CGContextAddLineToPoint(ctx, bounds.size.width, CGRectGetMaxY(safe));
+    CGContextStrokePath(ctx);
+
+    NSInteger sourceLeft =
+        (NSInteger)llround(CGRectGetMinX(self.normalizedRect) * MAX(1, self.sourceWidth));
+    NSInteger sourceRight =
+        (NSInteger)llround(CGRectGetMaxX(self.normalizedRect) * MAX(1, self.sourceWidth));
+    NSInteger sourceTop =
+        (NSInteger)llround(CGRectGetMinY(self.normalizedRect) * MAX(1, self.sourceHeight));
+    NSInteger sourceBottom =
+        (NSInteger)llround(CGRectGetMaxY(self.normalizedRect) * MAX(1, self.sourceHeight));
+
+    [self drawLabel:[NSString stringWithFormat:@"x=%ld", (long)sourceLeft]
+            atPoint:CGPointMake(CGRectGetMinX(safe) + 8, CGRectGetMinY(safe) + 8)];
+    [self drawLabel:[NSString stringWithFormat:@"x=%ld", (long)sourceRight]
+            atPoint:CGPointMake(CGRectGetMaxX(safe) + 8, CGRectGetMaxY(safe) - 24)];
+    [self drawLabel:[NSString stringWithFormat:@"y=%ld", (long)sourceTop]
+            atPoint:CGPointMake(CGRectGetMinX(safe) + 8, CGRectGetMinY(safe) - 24)];
+    [self drawLabel:[NSString stringWithFormat:@"y=%ld", (long)sourceBottom]
+            atPoint:CGPointMake(CGRectGetMaxX(safe) - 88, CGRectGetMaxY(safe) + 8)];
+}
+
+- (IPlaySafeAreaEdge)nearestEdgeToPoint:(CGPoint)point {
+    CGRect safe = [self editorRect];
+    CGFloat radius = 40.0;
+    CGFloat distances[4] = {
+        fabs(point.x - CGRectGetMinX(safe)),
+        fabs(point.y - CGRectGetMinY(safe)),
+        fabs(point.x - CGRectGetMaxX(safe)),
+        fabs(point.y - CGRectGetMaxY(safe))
+    };
+    IPlaySafeAreaEdge edges[4] = {
+        IPlaySafeAreaEdgeLeft, IPlaySafeAreaEdgeTop,
+        IPlaySafeAreaEdgeRight, IPlaySafeAreaEdgeBottom
+    };
+    CGFloat best = CGFLOAT_MAX;
+    IPlaySafeAreaEdge selected = IPlaySafeAreaEdgeNone;
+    for (NSInteger i = 0; i < 4; i++) {
+        if (distances[i] <= radius && distances[i] < best) {
+            best = distances[i];
+            selected = edges[i];
+        }
+    }
+    return selected;
+}
+
+- (void)moveActiveEdgeToPoint:(CGPoint)point {
+    if (self.bounds.size.width <= 0 || self.bounds.size.height <= 0) return;
+    CGFloat x = MAX(0, MIN(1, point.x / self.bounds.size.width));
+    CGFloat y = MAX(0, MIN(1, point.y / self.bounds.size.height));
+    CGRect value = self.normalizedRect;
+    CGFloat left = CGRectGetMinX(value);
+    CGFloat top = CGRectGetMinY(value);
+    CGFloat right = CGRectGetMaxX(value);
+    CGFloat bottom = CGRectGetMaxY(value);
+    CGFloat minXGap = 1.0 / MAX(1, self.sourceWidth);
+    CGFloat minYGap = 1.0 / MAX(1, self.sourceHeight);
+
+    switch (self.activeEdge) {
+        case IPlaySafeAreaEdgeLeft:
+            left = MAX(0, MIN(right - minXGap, x));
+            break;
+        case IPlaySafeAreaEdgeTop:
+            top = MAX(0, MIN(bottom - minYGap, y));
+            break;
+        case IPlaySafeAreaEdgeRight:
+            right = MIN(1, MAX(left + minXGap, x));
+            break;
+        case IPlaySafeAreaEdgeBottom:
+            bottom = MIN(1, MAX(top + minYGap, y));
+            break;
+        default:
+            return;
+    }
+    self.normalizedRect = CGRectMake(left, top, right - left, bottom - top);
+    [self setNeedsDisplay];
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)event;
+    UITouch *touch = touches.anyObject;
+    self.activeEdge = touch ? [self nearestEdgeToPoint:[touch locationInView:self]]
+                            : IPlaySafeAreaEdgeNone;
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)event;
+    UITouch *touch = touches.anyObject;
+    if (touch && self.activeEdge != IPlaySafeAreaEdgeNone)
+        [self moveActiveEdgeToPoint:[touch locationInView:self]];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)touches; (void)event;
+    self.activeEdge = IPlaySafeAreaEdgeNone;
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)touches; (void)event;
+    self.activeEdge = IPlaySafeAreaEdgeNone;
+}
+
+@end
+
+
 /* Exact UIKit equivalent of upstream CarPlayHostActivity's three-finger
  * swipe-down settings gesture. It consumes the sequence the instant the
  * third finger lands, before CarPlay can interpret that sequence. */
@@ -3960,63 +4188,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     };
     refreshSafeSummary();
 
-    NSMutableArray<UISlider *> *safeSliders = [NSMutableArray array];
-    NSMutableArray<UIStackView *> *safeEditorRows = [NSMutableArray array];
-    NSArray<NSString *> *safeTitles = @[@"Left", @"Top", @"Right", @"Bottom"];
-    NSArray<NSString *> *safeKeys = @[
-        @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
-        @"iPlaySafeRightPm", @"iPlaySafeBottomPm"
-    ];
-    NSArray<NSNumber *> *safeDefaults = @[@0, @0, @1000, @1000];
-
-    for (NSInteger safeIndex = 0; safeIndex < 4; safeIndex++) {
-        UIStackView *safeRow = [[UIStackView alloc] init];
-        safeRow.axis = UILayoutConstraintAxisHorizontal;
-        safeRow.alignment = UIStackViewAlignmentCenter;
-        safeRow.spacing = 14;
-        safeRow.hidden = YES;
-        [safeEditorRows addObject:safeRow];
-        UILabel *safeLabel =
-            [self upstreamLabel:safeTitles[safeIndex] size:16 color:SECONDARY bold:NO];
-        [safeLabel.widthAnchor constraintEqualToConstant:70].active = YES;
-        [safeRow addArrangedSubview:safeLabel];
-
-        UISlider *safeSlider = [[UISlider alloc] init];
-        safeSlider.minimumValue = 0;
-        safeSlider.maximumValue = 1000;
-        safeSlider.value =
-            safeValue(safeKeys[safeIndex], safeDefaults[safeIndex].integerValue);
-        safeSlider.minimumTrackTintColor = ACCENT;
-        safeSlider.maximumTrackTintColor =
-            [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
-        safeSlider.tag = safeIndex;
-        [safeSliders addObject:safeSlider];
-
-        __weak UISlider *weakSafeSlider = safeSlider;
-        [safeSlider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-            (void)action;
-            UISlider *slider = weakSafeSlider;
-            if (!slider) return;
-
-            NSInteger value = (NSInteger)llround(slider.value / 5.0) * 5;
-            NSInteger left = safeValue(@"iPlaySafeLeftPm", 0);
-            NSInteger top = safeValue(@"iPlaySafeTopPm", 0);
-            NSInteger right = safeValue(@"iPlaySafeRightPm", 1000);
-            NSInteger bottom = safeValue(@"iPlaySafeBottomPm", 1000);
-
-            if (slider.tag == 0) value = MAX(0, MIN(right - 5, value));
-            else if (slider.tag == 1) value = MAX(0, MIN(bottom - 5, value));
-            else if (slider.tag == 2) value = MAX(left + 5, MIN(1000, value));
-            else value = MAX(top + 5, MIN(1000, value));
-
-            slider.value = value;
-            [settingsDefaults setInteger:value forKey:safeKeys[slider.tag]];
-            refreshSafeSummary();
-        }] forControlEvents:UIControlEventValueChanged];
-
-        [safeRow addArrangedSubview:safeSlider];
-        [displayStack addArrangedSubview:safeRow];
-    }
+    __block void (^refreshSettingsPreview)(void) = nil;
 
     UIStackView *safeButtons = [[UIStackView alloc] init];
     safeButtons.axis = UILayoutConstraintAxisHorizontal;
@@ -4026,14 +4198,86 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIButton *setSafe = [UIButton buttonWithType:UIButtonTypeCustom];
     [setSafe setTitle:@"Set" forState:UIControlStateNormal];
     [self styleUpstreamButton:setSafe primary:NO];
-    __weak UIButton *weakSetSafe = setSafe;
     [setSafe addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        BOOL opening = safeEditorRows.firstObject.hidden;
-        for (UIStackView *row in safeEditorRows) row.hidden = !opening;
-        [weakSetSafe setTitle:(opening ? @"Done" : @"Set")
-                     forState:UIControlStateNormal];
-        ip_log("[UI] safe area editor %s", opening ? "opened" : "closed");
+        UIViewController *safeController = [[UIViewController alloc] init];
+        safeController.modalPresentationStyle = UIModalPresentationFullScreen;
+        safeController.view.backgroundColor = [UIColor blackColor];
+
+        IPlaySafeAreaEditorView *editor = [[IPlaySafeAreaEditorView alloc] init];
+        editor.translatesAutoresizingMaskIntoConstraints = NO;
+        CarPlayDisplayProfile profile = preferred_carplay_display_profile();
+        editor.sourceWidth = MAX(1, profile.width);
+        editor.sourceHeight = MAX(1, profile.height);
+        [editor setPerMilleLeft:safeValue(@"iPlaySafeLeftPm", 0)
+                            top:safeValue(@"iPlaySafeTopPm", 0)
+                          right:safeValue(@"iPlaySafeRightPm", 1000)
+                         bottom:safeValue(@"iPlaySafeBottomPm", 1000)];
+        [safeController.view addSubview:editor];
+        [NSLayoutConstraint activateConstraints:@[
+            [editor.leadingAnchor constraintEqualToAnchor:safeController.view.leadingAnchor],
+            [editor.trailingAnchor constraintEqualToAnchor:safeController.view.trailingAnchor],
+            [editor.topAnchor constraintEqualToAnchor:safeController.view.topAnchor],
+            [editor.bottomAnchor constraintEqualToAnchor:safeController.view.bottomAnchor]
+        ]];
+
+        UILabel *editorTitle =
+            [self upstreamLabel:@"Safe area" size:24 color:[UIColor whiteColor] bold:YES];
+        editorTitle.translatesAutoresizingMaskIntoConstraints = NO;
+        [safeController.view addSubview:editorTitle];
+        [NSLayoutConstraint activateConstraints:@[
+            [editorTitle.leadingAnchor constraintEqualToAnchor:safeController.view.leadingAnchor constant:16],
+            [editorTitle.topAnchor constraintEqualToAnchor:safeController.view.safeAreaLayoutGuide.topAnchor constant:12]
+        ]];
+
+        UIStackView *controls = [[UIStackView alloc] init];
+        controls.axis = UILayoutConstraintAxisHorizontal;
+        controls.distribution = UIStackViewDistributionFillEqually;
+        controls.spacing = 12;
+        controls.translatesAutoresizingMaskIntoConstraints = NO;
+        controls.layoutMargins = UIEdgeInsetsMake(10, 16, 16, 16);
+        controls.layoutMarginsRelativeArrangement = YES;
+
+        UIButton *cancel = [UIButton buttonWithType:UIButtonTypeCustom];
+        [cancel setTitle:@"Cancel" forState:UIControlStateNormal];
+        [self styleUpstreamButton:cancel primary:NO];
+        [controls addArrangedSubview:cancel];
+
+        UIButton *saveArea = [UIButton buttonWithType:UIButtonTypeCustom];
+        [saveArea setTitle:@"Save" forState:UIControlStateNormal];
+        [self styleUpstreamButton:saveArea primary:YES];
+        [controls addArrangedSubview:saveArea];
+        [safeController.view addSubview:controls];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [controls.leadingAnchor constraintEqualToAnchor:safeController.view.leadingAnchor],
+            [controls.trailingAnchor constraintEqualToAnchor:safeController.view.trailingAnchor],
+            [controls.bottomAnchor constraintEqualToAnchor:safeController.view.safeAreaLayoutGuide.bottomAnchor]
+        ]];
+
+        __weak UIViewController *weakSafeController = safeController;
+        [cancel addAction:[UIAction actionWithHandler:^(__kindof UIAction *innerAction) {
+            (void)innerAction;
+            [weakSafeController dismissViewControllerAnimated:YES completion:nil];
+        }] forControlEvents:UIControlEventTouchUpInside];
+
+        [saveArea addAction:[UIAction actionWithHandler:^(__kindof UIAction *innerAction) {
+            (void)innerAction;
+            NSInteger left = 0, top = 0, right = 1000, bottom = 1000;
+            [editor getPerMilleLeft:&left top:&top right:&right bottom:&bottom];
+            [settingsDefaults setInteger:left forKey:@"iPlaySafeLeftPm"];
+            [settingsDefaults setInteger:top forKey:@"iPlaySafeTopPm"];
+            [settingsDefaults setInteger:right forKey:@"iPlaySafeRightPm"];
+            [settingsDefaults setInteger:bottom forKey:@"iPlaySafeBottomPm"];
+            refreshSafeSummary();
+            if (refreshSettingsPreview) refreshSettingsPreview();
+            ip_log("[UI] safe area saved: %ld,%ld -> %ld,%ld",
+                   (long)left, (long)top, (long)right, (long)bottom);
+            [weakSafeController dismissViewControllerAnimated:YES completion:nil];
+        }] forControlEvents:UIControlEventTouchUpInside];
+
+        [weakSettings presentViewController:safeController animated:YES completion:nil];
+        ip_log("[UI] upstream safe area editor opened");
     }] forControlEvents:UIControlEventTouchUpInside];
     [safeButtons addArrangedSubview:setSafe];
 
@@ -4042,12 +4286,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self styleUpstreamButton:resetSafe primary:NO];
     [resetSafe addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        NSArray<NSNumber *> *values = @[@0, @0, @1000, @1000];
-        for (NSInteger i = 0; i < 4; i++) {
-            [settingsDefaults setInteger:values[i].integerValue forKey:safeKeys[i]];
-            safeSliders[i].value = values[i].floatValue;
-        }
+        [settingsDefaults setInteger:0 forKey:@"iPlaySafeLeftPm"];
+        [settingsDefaults setInteger:0 forKey:@"iPlaySafeTopPm"];
+        [settingsDefaults setInteger:1000 forKey:@"iPlaySafeRightPm"];
+        [settingsDefaults setInteger:1000 forKey:@"iPlaySafeBottomPm"];
         refreshSafeSummary();
+        if (refreshSettingsPreview) refreshSettingsPreview();
     }] forControlEvents:UIControlEventTouchUpInside];
     [safeButtons addArrangedSubview:resetSafe];
     [displayStack addArrangedSubview:safeButtons];
@@ -4237,7 +4481,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UILabel *applyHint = [self upstreamLabel:@"" size:17 color:SECONDARY bold:NO];
     applyHint.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
 
-    void (^refreshSettingsPreview)(void) = ^{
+    refreshSettingsPreview = ^{
         CarPlayDisplayProfile previewDisplay = preferred_carplay_display_profile();
         NSString *previewManufacturer = [settingsDefaults stringForKey:@"iPlayManufacturer"];
         NSString *previewModel = [settingsDefaults stringForKey:@"iPlayModel"];
@@ -4334,8 +4578,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     wirePreview(fullSwitch, UIControlEventValueChanged);
     wirePreview(locationSwitch, UIControlEventValueChanged);
     wirePreview(drawOutsideSwitch, UIControlEventValueChanged);
-    for (UISlider *safeSlider in safeSliders)
-        wirePreview(safeSlider, UIControlEventValueChanged);
 
     refreshSettingsPreview();
 
