@@ -116,10 +116,10 @@ jobs:
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:NO' \
             iOS/SideStoreReceiver/iPlay.m
-          grep -F '[self.vc dismissViewControllerAnimated:YES completion:^{' \
-            iOS/SideStoreReceiver/upstream_ui.inc
-          grep -F 'setInteger:0 forKey:@"iPlayLastMode"' \
-            iOS/SideStoreReceiver/upstream_ui.inc
+          grep -F '[settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];' \
+            iOS/SideStoreReceiver/iPlay.m
+          grep -F 'self.sideStoreMode = mode;' \
+            iOS/SideStoreReceiver/iPlay.m
           grep -F 'Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode.' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'iPlayDiscoverRemoteCarPlayReceivers' \
