@@ -621,8 +621,7 @@
                       options:@[@"Widest width", @"Longest height"]
                        values:@[@0, @1]
                    currentKey:@"iPlayPhysicalSizeBasis"
-                 defaultValue:0
-                   reconnects:NO];
+                 defaultValue:0];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Physical length"
