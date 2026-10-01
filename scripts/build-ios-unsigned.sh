@@ -119,6 +119,7 @@ echo "[5/6] Assemble unsigned app"
 cp "$SRC/Info.plist" "$OUT/Payload/iPlay.app/Info.plist"
 # Use the exact upstream DiPlay CarPlay artwork in the UIKit port.
 cp "$ROOT/common/src/main/res/drawable/ic_carplay.png" "$OUT/Payload/iPlay.app/ic_carplay.png"
+cp "$ROOT/common/src/main/res/raw/ic_car_home.png" "$OUT/Payload/iPlay.app/ic_car_home.png"
 chmod +x "$OUT/Payload/iPlay.app/iPlay"
 
 if codesign -dv "$OUT/Payload/iPlay.app/iPlay" >/dev/null 2>&1; then
