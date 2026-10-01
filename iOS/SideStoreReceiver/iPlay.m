@@ -4571,7 +4571,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 - (void)secondaryTapped {
     if (self.state == StateIdle) {
         if (iPlayIsStockSideStoreBuild()) {
-            [self showSideStoreModePicker];
+            [self chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:NO];
         } else {
             [self showWifiSetup];
         }
