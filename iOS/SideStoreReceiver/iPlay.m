@@ -2832,7 +2832,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayLastMode"];
         self.sideStoreMode = (savedMode == 1) ? 1 : 0;
         ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
-        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
+        if ([settingsDefaults boolForKey:@"iPlayAutoConnect"]) {
             ip_log("[SIDESTORE] Auto Connect scheduled for saved mode=%ld",
                    (long)self.sideStoreMode);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
@@ -2945,7 +2945,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }
     if (self.state == StateAwaitingAP) [self pollAP];
     if (self.state == StateIdle &&
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoForeground"]) {
+        [settingsDefaults boolForKey:@"iPlayAutoForeground"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                      (int64_t)(0.35 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
@@ -3078,6 +3078,35 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UIColor *TEXT = [UIColor whiteColor];
     UIColor *DANGER = [UIColor colorWithRed:190/255.0 green:45/255.0 blue:45/255.0 alpha:1];
 
+    NSUserDefaults *settingsDefaults = [NSUserDefaults standardUserDefaults];
+    NSArray<NSString *> *trackedKeys = @[
+        @"iPlayLastMode", @"iPlayAutoConnect", @"iPlayAutoForeground",
+        @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
+        @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
+        @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport"
+    ];
+    NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
+    for (NSString *key in trackedKeys) {
+        id value = [settingsDefaults objectForKey:key];
+        baseline[key] = value ?: [NSNull null];
+    }
+    NSInteger baselineMode = self.sideStoreMode;
+    BOOL baselineFullscreen = [settingsDefaults objectForKey:@"iPlayFullScreen"] == nil
+        ? YES : [settingsDefaults boolForKey:@"iPlayFullScreen"];
+    void (^restoreBaseline)(void) = ^{
+        for (NSString *key in trackedKeys) {
+            id value = baseline[key];
+            if (value == [NSNull null]) [settingsDefaults removeObjectForKey:key];
+            else [settingsDefaults setObject:value forKey:key];
+        }
+        self.sideStoreMode = baselineMode;
+        if (self.state == StateActive && [self isPhone]) {
+            self.vc.fullscreenMode = baselineFullscreen;
+            [self.vc.view setNeedsLayout];
+            [self.vc.view layoutIfNeeded];
+        }
+    };
+
     UIViewController *settings = [[UIViewController alloc] init];
     settings.modalPresentationStyle = UIModalPresentationFullScreen;
     settings.view.backgroundColor = [UIColor blackColor];
@@ -3131,6 +3160,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     __weak UIViewController *weakSettings = settings;
     [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
+        restoreBaseline();
         [weakSettings dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [titleRow addArrangedSubview:close];
@@ -3152,30 +3182,18 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     connection.backgroundColor = PANEL;
     connection.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
-    UIButton *local = [UIButton buttonWithType:UIButtonTypeCustom];
-    [local setTitle:@"CarPlay on this iPhone (A → A)" forState:UIControlStateNormal];
-    [self styleUpstreamButton:local primary:NO];
-    local.backgroundColor = ACCENT;
-    [local setTitleColor:[UIColor colorWithRed:8/255.0 green:17/255.0 blue:11/255.0 alpha:1]
-                forState:UIControlStateNormal];
-    [local.heightAnchor constraintEqualToConstant:60].active = YES;
-    [local addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    UISegmentedControl *modeSelector = [[UISegmentedControl alloc]
+        initWithItems:@[@"This iPhone · A → A", @"Receive · A → B"]];
+    modeSelector.selectedSegmentIndex = self.sideStoreMode == 1 ? 1 : 0;
+    modeSelector.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakModeSelector = modeSelector;
+    [modeSelector addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        self.sideStoreMode = 0;
-        [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [connectionStack addArrangedSubview:local];
-
-    UIButton *receive = [UIButton buttonWithType:UIButtonTypeCustom];
-    [receive setTitle:@"Receive from another iPhone (A → B)" forState:UIControlStateNormal];
-    [self styleUpstreamButton:receive primary:NO];
-    [receive.heightAnchor constraintEqualToConstant:60].active = YES;
-    [receive addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        self.sideStoreMode = 1;
-        [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"iPlayLastMode"];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [connectionStack addArrangedSubview:receive];
+        NSInteger mode = weakModeSelector.selectedSegmentIndex == 1 ? 1 : 0;
+        self.sideStoreMode = mode;
+        [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [connectionStack addArrangedSubview:modeSelector];
     [root addArrangedSubview:connection];
 
     UIStackView *autoStack = nil;
@@ -3194,11 +3212,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [autoRow addArrangedSubview:autoText];
     UISwitch *autoSwitch = [[UISwitch alloc] init];
     autoSwitch.onTintColor = ACCENT;
-    autoSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"];
+    autoSwitch.on = [settingsDefaults boolForKey:@"iPlayAutoConnect"];
     __weak UISwitch *weakAutoSwitch = autoSwitch;
     [autoSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [[NSUserDefaults standardUserDefaults] setBool:weakAutoSwitch.isOn forKey:@"iPlayAutoConnect"];
+        [settingsDefaults setBool:weakAutoSwitch.isOn forKey:@"iPlayAutoConnect"];
     }] forControlEvents:UIControlEventValueChanged];
     [autoRow addArrangedSubview:autoSwitch];
     [autoStack addArrangedSubview:autoRow];
@@ -3219,12 +3237,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UISwitch *foregroundSwitch = [[UISwitch alloc] init];
     foregroundSwitch.onTintColor = ACCENT;
     foregroundSwitch.on =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoForeground"];
+        [settingsDefaults boolForKey:@"iPlayAutoForeground"];
     __weak UISwitch *weakForegroundSwitch = foregroundSwitch;
     [foregroundSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [[NSUserDefaults standardUserDefaults]
-            setBool:weakForegroundSwitch.isOn forKey:@"iPlayAutoForeground"];
+        [settingsDefaults setBool:weakForegroundSwitch.isOn forKey:@"iPlayAutoForeground"];
     }] forControlEvents:UIControlEventValueChanged];
     [foregroundRow addArrangedSubview:foregroundSwitch];
     [autoStack addArrangedSubview:foregroundRow];
@@ -3498,6 +3515,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         (void)action;
         BOOL reconnect = (self.state == StateActive);
         NSInteger mode = self.sideStoreMode;
+        [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
         [weakSettings dismissViewControllerAnimated:YES completion:^{
             if (reconnect) {
                 [self stopFlow];
