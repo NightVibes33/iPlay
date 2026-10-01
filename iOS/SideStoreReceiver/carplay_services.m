@@ -1048,7 +1048,16 @@ static void handle_info(int sock, const HTTPReq *r) {
          * already a finished app icon and must not be composited as a raw
          * vehicle glyph.
          */
+        NSArray<NSString *> *documentsPaths =
+            NSSearchPathForDirectoriesInDomains(
+                NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *customAirPlayIcon =
+            [(documentsPaths.firstObject ?: NSTemporaryDirectory())
+                stringByAppendingPathComponent:@"airplay-icon.png"];
         NSArray<NSString *> *oemIconPaths = @[
+            customAirPlayIcon ?: @"",
+            [[NSBundle mainBundle] pathForResource:@"ic_carplay"
+                                            ofType:@"png"] ?: @"",
             [[NSBundle mainBundle] pathForResource:@"Icon-OEM-104"
                                             ofType:@"png"] ?: @"",
             @"/Applications/Showcase.app/Icon-OEM-104.png",
@@ -1073,6 +1082,9 @@ static void handle_info(int sock, const HTTPReq *r) {
             printf("[AP] WARN: OEM vehicle icon unavailable\n");
         }
         NSArray<NSString *> *oemRenderedIconPaths = @[
+            customAirPlayIcon ?: @"",
+            [[NSBundle mainBundle] pathForResource:@"ic_carplay"
+                                            ofType:@"png"] ?: @"",
             [[NSBundle mainBundle] pathForResource:@"Icon-OEM-120"
                                             ofType:@"png"] ?: @"",
             @"/Applications/Showcase.app/Icon-OEM-120.png",
