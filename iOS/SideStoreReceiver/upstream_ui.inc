@@ -239,6 +239,7 @@
     [back.widthAnchor constraintEqualToConstant:130].active = YES;
     [header addArrangedSubview:back];
     [root addArrangedSubview:header];
+    [root setCustomSpacing:24 afterView:header];
 
     if (outRoot) *outRoot = root;
     return page;
