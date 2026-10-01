@@ -21,6 +21,8 @@
 #import <CoreMedia/CoreMedia.h>
 #import <Security/Security.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -6022,7 +6024,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     dispatch_async(self.bgQueue, ^{
         if (self.clientFd >= 0) { close(self.clientFd); self.clientFd = -1; }
         if (self.listenFd >= 0) { close(self.listenFd); self.listenFd = -1; }
-        unlink(SOCK_PATH);
+        self.ipcPort = 0;
+        if (!iPlayIsStockSideStoreBuild()) unlink(SOCK_PATH);
         g_touch_fd = -1;
         __sync_add_and_fetch(&g_touch_epoch, 1);
         g_carplay_w = 0; g_carplay_h = 0;
