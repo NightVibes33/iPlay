@@ -4921,7 +4921,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     [self.primaryButton setTitle:@"Connect phone"
                                        forState:UIControlStateNormal];
                     self.subtitleLabel.text = self.lastStartupFailure.length
-                        ? [NSString stringWithFormat:@"Last start failed: %@\nTap Connect phone to retry.", self.lastStartupFailure]
+                        ? [NSString stringWithFormat:
+                            @"Last start failed: %@\nFull logs: Files › On My iPhone › iPlay › iPlay Logs › last-start-failure.txt\nTap Connect phone to retry.",
+                            self.lastStartupFailure]
                         : @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.\nA → A uses LocalDevVPN + trusted Remote Pairing.";
                 }
 
