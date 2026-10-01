@@ -646,12 +646,18 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     NSString *manufacturer = [identityDefaults stringForKey:@"iPlayManufacturer"];
     if (model.length == 0) model = @"DiPlay";
     if (manufacturer.length == 0) manufacturer = @"DiPlay";
+    NSString *firmware =
+        [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    NSString *hardware =
+        [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
+    if (firmware.length == 0) firmware = @"0.1";
+    if (hardware.length == 0) hardware = @"1";
     param_string(&p, 0, name);
     param_string(&p, 1, model.UTF8String);
     param_string(&p, 2, manufacturer.UTF8String);
     param_string(&p, 3, "IPL-A2A-0001");
-    param_string(&p, 4, "0.1");
-    param_string(&p, 5, "1.0");
+    param_string(&p, 4, firmware.UTF8String);
+    param_string(&p, 5, hardware.UTF8String);
     /*
      * Match DiPlay's real wired head-unit identity. Remote Pairing/RSD gives
      * us the trusted transport into this same iPhone, but CarKit still uses
@@ -671,8 +677,9 @@ static BOOL send_identification(Control *c, NSString *displayName) {
         0xea00,0xea01,0x5001,0x5201,0x5202,0xae01,
         0x4158,0x4155,0x4300,0x4e0e
     };
-    local_log("iAP2 identity name=%s manufacturer=%s model=%s",
-              name, manufacturer.UTF8String, model.UTF8String);
+    local_log("iAP2 identity name=%s manufacturer=%s model=%s firmware=%s build=%s",
+              name, manufacturer.UTF8String, model.UTF8String,
+              firmware.UTF8String, hardware.UTF8String);
     BOOL locationEnabled =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
     uint16_t sent[sizeof(sentBase)/sizeof(sentBase[0]) + 1];
