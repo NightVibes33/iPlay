@@ -617,6 +617,14 @@
                                               symbol:@"display"
                                                stack:&displayStack];
     [self upstreamAddChoiceTo:displayStack
+                        title:@"Physical size basis"
+                      options:@[@"Widest width", @"Longest height"]
+                       values:@[@0, @1]
+                   currentKey:@"iPlayPhysicalSizeBasis"
+                 defaultValue:0
+                   reconnects:NO];
+
+    [self upstreamAddChoiceTo:displayStack
                         title:@"Physical length"
                       options:@[@"100 mm", @"150 mm", @"200 mm", @"250 mm", @"300 mm", @"350 mm", @"400 mm"]
                        values:@[@100, @150, @200, @250, @300, @350, @400]
