@@ -724,9 +724,15 @@
                  defaultValue:60
                    reconnects:YES];
 
-    [self upstreamAddUnavailableToggleTo:displayStack
-                                   title:@"Efficient video"
-                             description:@"Upstream uses HEVC. The current iOS receiver keeps this disabled until its HEVC screen parser is enabled, so this control cannot silently break playback."];
+    [self upstreamAddToggleTo:displayStack
+                        title:@"Efficient video"
+                  description:@"Use HEVC. Leave off for the widest receiver compatibility."
+                        value:[defaults boolForKey:@"iPlayHEVC"]
+                      changed:^(BOOL value) {
+        [defaults setBool:value forKey:@"iPlayHEVC"];
+        if (self.state == StateActive || self.state == StateAwaitingPhone)
+            [self upstreamReconnectCurrentMode];
+    }];
 
     [self upstreamAddToggleTo:displayStack
                         title:@"Right-hand drive"
