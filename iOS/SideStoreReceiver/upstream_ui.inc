@@ -93,47 +93,6 @@
     return card;
 }
 
-- (UIView *)upstreamSectionWithTitle:(NSString *)title
-                              symbol:(NSString *)symbol
-                               stack:(UIStackView **)outStack {
-    UIView *card = [[UIView alloc] init];
-    card.backgroundColor = [self upstreamSurfaceColor];
-    card.layer.cornerRadius = 20;
-    card.layer.borderWidth = 1;
-    card.layer.borderColor = [self upstreamBorderColor].CGColor;
-
-    UIStackView *content = [self upstreamVerticalStack:12];
-    content.translatesAutoresizingMaskIntoConstraints = NO;
-    [card addSubview:content];
-    [NSLayoutConstraint activateConstraints:@[
-        [content.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
-        [content.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24],
-        [content.topAnchor constraintEqualToAnchor:card.topAnchor constant:24],
-        [content.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24],
-    ]];
-
-    UIStackView *header = [[UIStackView alloc] init];
-    header.axis = UILayoutConstraintAxisHorizontal;
-    header.alignment = UIStackViewAlignmentCenter;
-    header.spacing = 10;
-    if (symbol.length) {
-        UIImage *image = [UIImage systemImageNamed:symbol];
-        UIImageView *icon = [[UIImageView alloc] initWithImage:image];
-        icon.tintColor = [self upstreamAccentColor];
-        icon.contentMode = UIViewContentModeScaleAspectFit;
-        [icon.widthAnchor constraintEqualToConstant:24].active = YES;
-        [icon.heightAnchor constraintEqualToConstant:24].active = YES;
-        [header addArrangedSubview:icon];
-    }
-    [header addArrangedSubview:[self upstreamLabel:title
-                                              size:22
-                                             color:[self upstreamTextColor]
-                                              bold:YES]];
-    [content addArrangedSubview:header];
-    if (outStack) *outStack = content;
-    return card;
-}
-
 - (void)buildUpstreamHomeReal {
     UIView *content = [self rootContentView];
     self.setupOverlay = [[UIView alloc] initWithFrame:content.bounds];
