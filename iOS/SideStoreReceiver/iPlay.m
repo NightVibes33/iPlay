@@ -1105,7 +1105,7 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
         @selector(maximumFramesPerSecond)] ? screen.maximumFramesPerSecond : 60;
     NSInteger requestedFPS = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
     if (requestedFPS < 30 || requestedFPS > 60)
-        requestedFPS = 60;
+        requestedFPS = 30;
     requestedFPS = 30 + (NSInteger)llround((requestedFPS - 30) / 5.0) * 5;
     uint16_t framesPerSecond =
         (uint16_t)MAX(30, MIN(requestedFPS, MIN(60, screenFPS)));
@@ -1932,7 +1932,7 @@ static OSStatus carplay_aac_input_callback(
     NSError *sessionError = nil;
     AVAudioSession *session = [AVAudioSession sharedInstance];
     BOOL audioFocus = [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayAudioFocus"] == nil
-        ? YES : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAudioFocus"];
+        ? NO : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAudioFocus"];
     AVAudioSessionCategoryOptions audioOptions =
         audioFocus ? 0 : AVAudioSessionCategoryOptionMixWithOthers;
     [session setCategory:AVAudioSessionCategoryPlayback
@@ -3776,7 +3776,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [displayStack addArrangedSubview:fpsHeader];
 
     NSInteger fpsValue = [settingsDefaults integerForKey:@"iPlayFrameRate"];
-    if (fpsValue < 30 || fpsValue > 60) fpsValue = 60;
+    if (fpsValue < 30 || fpsValue > 60) fpsValue = 30;
     fpsValue = 30 + (NSInteger)llround((fpsValue - 30) / 5.0) * 5;
     fpsValueLabel.text = [NSString stringWithFormat:@"%ld fps", (long)fpsValue];
 
@@ -4038,7 +4038,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     audioFocusSwitch.onTintColor = ACCENT;
     BOOL audioFocusEnabled =
         [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayAudioFocus"] == nil
-            ? YES
+            ? NO
             : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAudioFocus"];
     audioFocusSwitch.on = audioFocusEnabled;
     __weak UISwitch *weakAudioFocusSwitch = audioFocusSwitch;
