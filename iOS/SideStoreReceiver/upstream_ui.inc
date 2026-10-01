@@ -20,6 +20,18 @@
     return [UIColor colorWithRed:168/255.0 green:182/255.0 blue:202/255.0 alpha:1];
 }
 
+- (void)upstreamApplyLetterSpacing:(CGFloat)em toLabel:(UILabel *)label {
+    if (!label.text.length || !label.font) return;
+    CGFloat kern = label.font.pointSize * em;
+    label.attributedText = [[NSAttributedString alloc]
+        initWithString:label.text
+            attributes:@{
+                NSKernAttributeName: @(kern),
+                NSFontAttributeName: label.font,
+                NSForegroundColorAttributeName: label.textColor ?: [UIColor whiteColor],
+            }];
+}
+
 - (UIButton *)upstreamButtonWithTitle:(NSString *)title
                               primary:(BOOL)primary
                                height:(CGFloat)height
@@ -329,6 +341,7 @@
         [self upstreamLabel:@"YOUR PHONE. YOUR DRIVE."
                        size:12 color:[self upstreamAccentColor] bold:YES];
     self.upstreamEyebrowLabel.accessibilityLabel = @"Your phone. Your drive.";
+    [self upstreamApplyLetterSpacing:0.16 toLabel:self.upstreamEyebrowLabel];
     self.upstreamHeroTitleLabel =
         [self upstreamLabel:@"A familiar drive."
                        size:(wide ? 42 : 36)
@@ -347,6 +360,7 @@
     self.upstreamWirelessLabel =
         [self upstreamLabel:@"WIRELESS CARPLAY"
                        size:12 color:[self upstreamAccentColor] bold:YES];
+    [self upstreamApplyLetterSpacing:0.12 toLabel:self.upstreamWirelessLabel];
     [cardStack addArrangedSubview:self.upstreamWirelessLabel];
     [cardStack setCustomSpacing:10 afterView:self.upstreamWirelessLabel];
 
@@ -427,6 +441,7 @@
     self.upstreamPreviewLabel =
         [self upstreamLabel:[NSString stringWithFormat:@"PUBLIC PREVIEW  ·  %s", APP_VERSION]
                        size:12 color:[self upstreamMutedColor] bold:NO];
+    [self upstreamApplyLetterSpacing:0.08 toLabel:self.upstreamPreviewLabel];
     self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamPreviewLabel];
 
