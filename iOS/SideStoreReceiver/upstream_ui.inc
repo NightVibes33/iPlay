@@ -22,11 +22,12 @@
 
 - (UIButton *)upstreamButtonWithTitle:(NSString *)title
                               primary:(BOOL)primary
+                               height:(CGFloat)height
                                action:(void (^)(void))action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
     [button setTitle:title forState:UIControlStateNormal];
     [self styleUpstreamButton:button primary:primary];
-    [button.heightAnchor constraintEqualToConstant:60].active = YES;
+    [button.heightAnchor constraintEqualToConstant:height].active = YES;
     if (action) {
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *sender) {
             (void)sender;
@@ -34,6 +35,15 @@
         }] forControlEvents:UIControlEventTouchUpInside];
     }
     return button;
+}
+
+- (UIButton *)upstreamButtonWithTitle:(NSString *)title
+                              primary:(BOOL)primary
+                               action:(void (^)(void))action {
+    return [self upstreamButtonWithTitle:title
+                                 primary:primary
+                                  height:60
+                                  action:action];
 }
 
 - (UIStackView *)upstreamVerticalStack:(CGFloat)spacing {
@@ -60,8 +70,8 @@
     [NSLayoutConstraint activateConstraints:@[
         [content.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
         [content.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24],
-        [content.topAnchor constraintEqualToAnchor:card.topAnchor constant:22],
-        [content.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-22],
+        [content.topAnchor constraintEqualToAnchor:card.topAnchor constant:24],
+        [content.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24],
     ]];
 
     UIStackView *header = [[UIStackView alloc] init];
@@ -273,7 +283,10 @@
                                      bold:YES];
     [header addArrangedSubview:self.titleLabel];
     [header addArrangedSubview:[[UIView alloc] init]];
-    UIButton *home = [self upstreamButtonWithTitle:@"Car home" primary:NO action:^{
+    UIButton *home = [self upstreamButtonWithTitle:@"Car home"
+                                                  primary:NO
+                                                   height:56
+                                                   action:^{
         [self upstreamHomeTapped];
     }];
     home.tag = 0x4450484d;
@@ -314,8 +327,8 @@
 
     self.primaryButton = [self upstreamButtonWithTitle:@"Connect phone"
                                               primary:YES
+                                               height:68
                                                action:^{ [self primaryTapped]; }];
-    [self.primaryButton.heightAnchor constraintEqualToConstant:68].active = YES;
     [cardStack addArrangedSubview:self.primaryButton];
 
     self.subtitleLabel =
@@ -325,8 +338,8 @@
 
     self.secondaryButton = [self upstreamButtonWithTitle:@"Choose iPhone"
                                                 primary:NO
+                                                 height:56
                                                  action:^{ [self secondaryTapped]; }];
-    [self.secondaryButton.heightAnchor constraintEqualToConstant:56].active = YES;
     [cardStack addArrangedSubview:self.secondaryButton];
 
     self.carHintLabel =
@@ -355,6 +368,7 @@
 
     self.receiverButton = [self upstreamButtonWithTitle:@"Receive from another iPhone"
                                                primary:NO
+                                                height:68
                                                 action:^{ [self receiverTapped]; }];
     [right addArrangedSubview:self.receiverButton];
     self.upstreamReceiverHintLabel =
@@ -365,6 +379,7 @@
 
     self.tertiaryButton = [self upstreamButtonWithTitle:@"Settings"
                                                primary:NO
+                                                height:68
                                                 action:^{ [self tertiaryTapped]; }];
     [right addArrangedSubview:self.tertiaryButton];
     self.upstreamSettingsHintLabel =
