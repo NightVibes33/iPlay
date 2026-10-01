@@ -4490,9 +4490,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     [self startRemoteAtoBReceiver:receiver];
                 });
             } else {
-                self.headlineLabel.text = @"Receiver selected";
-                self.subtitleLabel.text =
-                    [NSString stringWithFormat:@"Manual iPlay · %@", manualHost];
+                [self renderState];
             }
         }]];
     [hostController presentViewController:prompt animated:YES completion:nil];
@@ -4586,10 +4584,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             if (connectAfterSelection) {
                                 [self startRemoteAtoBReceiver:receiver];
                             } else {
-                                self.headlineLabel.text = @"Receiver selected";
-                                self.subtitleLabel.text = [NSString stringWithFormat:
-                                    @"%@ · %@", name.length ? name : @"iPlay",
-                                    host ?: @""];
+                                [self renderState];
                             }
                         }]];
                 }
