@@ -2741,6 +2741,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 /* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
 - (void)buildUpstreamHomeReal;
 - (void)layoutUpstreamHomeReal;
+- (void)showUpstreamSettingsReal;
 - (void)startRemoteAtoB;
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection;
@@ -4804,12 +4805,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             self.sideStoreMode = 0;
                             [[NSUserDefaults standardUserDefaults]
                                 setInteger:0 forKey:@"iPlayLastMode"];
-                            UIButton *choosePhoneButton =
-                                (UIButton *)[hostController.view viewWithTag:0x49504348];
-                            if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
-                                [choosePhoneButton setTitle:@"Choose iPhone · This iPhone"
-                                                   forState:UIControlStateNormal];
-                            }
                             [self renderState];
                             if (connectAfterSelection) [self attemptStart];
                         }]];
@@ -4850,12 +4845,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             self.sideStoreMode = 0;
                             [[NSUserDefaults standardUserDefaults]
                                 setInteger:0 forKey:@"iPlayLastMode"];
-                            UIButton *choosePhoneButton =
-                                (UIButton *)[hostController.view viewWithTag:0x49504348];
-                            if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
-                                [choosePhoneButton setTitle:@"Choose iPhone · This iPhone"
-                                                   forState:UIControlStateNormal];
-                            }
                             [self renderState];
                             if (connectAfterSelection) [self attemptStart];
                         }]];
@@ -4967,7 +4956,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 }
 - (void)tertiaryTapped {
     if (self.state != StateIdle) return;
-    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];
     else [self showCars];
 }
 
