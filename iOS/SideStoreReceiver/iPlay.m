@@ -3966,7 +3966,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
     char nameBuf[64];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
-    char widthPhysicalBuf[16], rightHandDriveBuf[8];
     CarPlayDisplayProfile display = preferred_carplay_display_profile();
     uint16_t displayWidth = display.width;
     uint16_t displayHeight = display.height;
@@ -3993,10 +3992,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         widthPhysicalMm != 350) widthPhysicalMm = 300;
     BOOL rightHandDrive =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
-    snprintf(widthPhysicalBuf, sizeof(widthPhysicalBuf), "%ld",
-             (long)widthPhysicalMm);
-    snprintf(rightHandDriveBuf, sizeof(rightHandDriveBuf), "%d",
-             rightHandDrive ? 1 : 0);
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
            "budget=%llu pixels selected=%ux%u@%u wlan=%s rcvbuf=%d "
            "policy=hardware-only layout=ignored",
@@ -4028,14 +4023,21 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             NSString *nameCopy = [receiverName copy];
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
+            NSInteger widthPhysicalCopy = widthPhysicalMm;
+            BOOL rightHandDriveCopy = rightHandDrive;
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
+                    char widthPhysicalArg[16], rightHandDriveArg[8];
                     snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
                     snprintf(bufferArg, sizeof(bufferArg), "%d", bufferCopy);
+                    snprintf(widthPhysicalArg, sizeof(widthPhysicalArg), "%ld",
+                             (long)widthPhysicalCopy);
+                    snprintf(rightHandDriveArg, sizeof(rightHandDriveArg), "%d",
+                             rightHandDriveCopy ? 1 : 0);
                     /*
                      * A->A runs over an already trusted Remote-Pairing/RSD
                      * CarKit relationship. Do not advertise AirPlay MFi-SAP
@@ -4052,8 +4054,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
-                        (char *)"--width-physical-mm", widthPhysicalBuf,
-                        (char *)"--right-hand-drive", rightHandDriveBuf,
+                        (char *)"--width-physical-mm", widthPhysicalArg,
+                        (char *)"--right-hand-drive", rightHandDriveArg,
                         (char *)"--local-simulator",
                         NULL
                     };
@@ -4064,8 +4066,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
-                        (char *)"--width-physical-mm", widthPhysicalBuf,
-                        (char *)"--right-hand-drive", rightHandDriveBuf,
+                        (char *)"--width-physical-mm", widthPhysicalArg,
+                        (char *)"--right-hand-drive", rightHandDriveArg,
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
