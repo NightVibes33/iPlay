@@ -103,6 +103,12 @@ jobs:
             exit 1
           fi
 
+          if grep -F 'if (selected == NSNotFound) selected = 0;' \
+              iOS/SideStoreReceiver/upstream_ui.inc; then
+            echo "ERROR: home settings collapsed a custom runtime value to a fake preset"
+            exit 1
+          fi
+
           # Stock SideStore build must never instruct users to install jailbreak tooling.
           if strings "$BIN" | grep -F "Sileo"; then
             echo "ERROR: SideStore binary still contains Sileo/jailbreak install messaging"
