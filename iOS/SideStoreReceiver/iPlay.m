@@ -2526,8 +2526,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) ControlsOverlayView *controlsOverlay;
 @property (nonatomic, strong) UILabel *controlsHintLabel;
 
-/* Three-finger tap is reserved for Showcase chrome and leaves pinch to CarPlay. */
-@property (nonatomic, strong) UITapGestureRecognizer *controlsGesture;
+/* Upstream DiPlay gesture: three-finger swipe down opens the real
+ * in-CarPlay settings surface while normal touches continue to CarPlay. */
+@property (nonatomic, strong) UIPanGestureRecognizer *controlsGesture;
 @property (nonatomic, assign) BOOL chromeVisible;
 
 /* Lifecycle */
@@ -2656,8 +2657,17 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         self.baaReady = YES;
         self.baaLoading = NO;
         self.baaError = nil;
-        self.sideStoreMode = 0;
+        NSInteger savedMode =
+            [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayLastMode"];
+        self.sideStoreMode = (savedMode == 1) ? 1 : 0;
         ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
+            ip_log("[UI] Auto Connect enabled; starting saved mode=%ld",
+                   (long)self.sideStoreMode);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (self.state == StateIdle) [self attemptStart];
+            });
+        }
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
             ip_log("[SIDESTORE] iPlayAutoConnect scheduled");
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
@@ -3081,20 +3091,47 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     return card;
 }
 
+- (void)restartWhenIdleForMode:(NSInteger)mode attemptsRemaining:(NSInteger)attempts {
+    if (attempts <= 0) {
+        ip_log("[UI] Save/reconnect timed out waiting for Idle");
+        return;
+    }
+    if (self.state == StateIdle) {
+        self.sideStoreMode = mode;
+        [self attemptStart];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
+                   dispatch_get_main_queue(), ^{
+        [self restartWhenIdleForMode:mode attemptsRemaining:attempts - 1];
+    });
+}
+
 - (void)showUpstreamSettings {
-    UIColor *BG = [UIColor colorWithRed:12/255.0 green:17/255.0 blue:27/255.0 alpha:1];
-    UIColor *ACCENT = [UIColor colorWithRed:166/255.0 green:200/255.0 blue:255/255.0 alpha:1];
-    UIColor *TEXT = [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
-    UIColor *MUTED = [UIColor colorWithRed:168/255.0 green:182/255.0 blue:202/255.0 alpha:1];
+    /*
+     * Native UIKit translation of upstream CarPlayHostActivity.buildSettingsMenu().
+     * Only settings backed by the iOS runtime are exposed here; Android/BYD-only
+     * controls are intentionally omitted instead of presenting no-op UI.
+     */
+    UIColor *PANEL = [UIColor colorWithRed:12/255.0 green:16/255.0 blue:19/255.0 alpha:1];
+    UIColor *SECONDARY = [UIColor colorWithRed:170/255.0 green:180/255.0 blue:190/255.0 alpha:1];
+    UIColor *ACCENT = [UIColor colorWithRed:127/255.0 green:205/255.0 blue:154/255.0 alpha:1];
+    UIColor *TEXT = [UIColor whiteColor];
+    UIColor *DANGER = [UIColor colorWithRed:190/255.0 green:45/255.0 blue:45/255.0 alpha:1];
 
     UIViewController *settings = [[UIViewController alloc] init];
     settings.modalPresentationStyle = UIModalPresentationFullScreen;
-    settings.view.backgroundColor = BG;
+    settings.view.backgroundColor = [UIColor blackColor];
+
+    UIView *panel = [[UIView alloc] init];
+    panel.translatesAutoresizingMaskIntoConstraints = NO;
+    panel.backgroundColor = PANEL;
+    [settings.view addSubview:panel];
 
     UIScrollView *scroll = [[UIScrollView alloc] init];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.alwaysBounceVertical = YES;
-    [settings.view addSubview:scroll];
+    [panel addSubview:scroll];
 
     UIStackView *root = [[UIStackView alloc] init];
     root.axis = UILayoutConstraintAxisVertical;
@@ -3102,67 +3139,71 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     root.translatesAutoresizingMaskIntoConstraints = NO;
     [scroll addSubview:root];
 
+    CGFloat maxWidth = MIN(UIScreen.mainScreen.bounds.size.width, 1200.0);
     [NSLayoutConstraint activateConstraints:@[
-        [scroll.leadingAnchor constraintEqualToAnchor:settings.view.leadingAnchor],
-        [scroll.trailingAnchor constraintEqualToAnchor:settings.view.trailingAnchor],
-        [scroll.topAnchor constraintEqualToAnchor:settings.view.topAnchor],
-        [scroll.bottomAnchor constraintEqualToAnchor:settings.view.bottomAnchor],
-        [root.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:32],
-        [root.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-32],
-        [root.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:24],
-        [root.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-32],
-        [root.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-64]
+        [panel.centerXAnchor constraintEqualToAnchor:settings.view.centerXAnchor],
+        [panel.topAnchor constraintEqualToAnchor:settings.view.topAnchor],
+        [panel.bottomAnchor constraintEqualToAnchor:settings.view.bottomAnchor],
+        [panel.widthAnchor constraintEqualToConstant:maxWidth],
+        [scroll.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:panel.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor],
+        [root.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:48],
+        [root.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-48],
+        [root.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:36],
+        [root.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-36],
+        [root.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-96]
     ]];
 
-    UIStackView *header = [[UIStackView alloc] init];
-    header.axis = UILayoutConstraintAxisHorizontal;
-    header.alignment = UIStackViewAlignmentCenter;
-    header.spacing = 12;
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"ic_carplay.png"]];
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-    [icon.widthAnchor constraintEqualToConstant:36].active = YES;
-    [icon.heightAnchor constraintEqualToConstant:36].active = YES;
-    [header addArrangedSubview:icon];
-    UILabel *brand = [self upstreamLabel:@APP_NAME size:26 color:TEXT bold:YES];
-    [header addArrangedSubview:brand];
-    UIView *spacer = [[UIView alloc] init];
-    [header addArrangedSubview:spacer];
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeCustom];
-    [back setTitle:@"Back" forState:UIControlStateNormal];
-    [self styleUpstreamButton:back primary:NO];
-    [back.widthAnchor constraintEqualToConstant:130].active = YES;
-    [back.heightAnchor constraintEqualToConstant:56].active = YES;
+    UIStackView *titleRow = [[UIStackView alloc] init];
+    titleRow.axis = UILayoutConstraintAxisHorizontal;
+    titleRow.alignment = UIStackViewAlignmentCenter;
+    titleRow.spacing = 12;
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
+    [close setTitle:@"×" forState:UIControlStateNormal];
+    [close setTitleColor:TEXT forState:UIControlStateNormal];
+    close.backgroundColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    close.layer.cornerRadius = 14;
+    close.titleLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightRegular];
+    [close.widthAnchor constraintEqualToConstant:48].active = YES;
+    [close.heightAnchor constraintEqualToConstant:48].active = YES;
     __weak UIViewController *weakSettings = settings;
-    [back addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         [weakSettings dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [header addArrangedSubview:back];
-    [root addArrangedSubview:header];
+    [titleRow addArrangedSubview:close];
 
-    UILabel *heading = [self upstreamLabel:@"Your drive, your way." size:34 color:TEXT bold:YES];
-    [root addArrangedSubview:heading];
-    UILabel *intro = [self upstreamLabel:
-        @"Changes apply to your next CarPlay connection. A → A remains the default for SideStore."
-        size:17 color:MUTED bold:NO];
-    [root addArrangedSubview:intro];
+    UILabel *menuTitle = [self upstreamLabel:@"CarPlay settings" size:32 color:TEXT bold:YES];
+    [titleRow addArrangedSubview:menuTitle];
+    [root addArrangedSubview:titleRow];
+
+    UILabel *(^categoryLabel)(NSString *) = ^UILabel *(NSString *text) {
+        UILabel *label = [self upstreamLabel:text.uppercaseString size:13 color:SECONDARY bold:YES];
+        label.accessibilityLabel = text;
+        return label;
+    };
+
+    [root addArrangedSubview:categoryLabel(@"Connection")];
 
     UIStackView *connectionStack = nil;
-    UIView *connection = [self upstreamSettingsCardWithTitle:@"Connection setup" stack:&connectionStack];
-    [connectionStack addArrangedSubview:[self upstreamLabel:
-        @"Choose how to connect. The same receiver engine is used for local and two-iPhone modes."
-        size:16 color:MUTED bold:NO]];
+    UIView *connection = [self upstreamSettingsCardWithTitle:@"Connection mode" stack:&connectionStack];
+    connection.backgroundColor = PANEL;
+    connection.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     UIButton *local = [UIButton buttonWithType:UIButtonTypeCustom];
     [local setTitle:@"CarPlay on this iPhone (A → A)" forState:UIControlStateNormal];
-    [self styleUpstreamButton:local primary:YES];
+    [self styleUpstreamButton:local primary:NO];
+    local.backgroundColor = ACCENT;
+    [local setTitleColor:[UIColor colorWithRed:8/255.0 green:17/255.0 blue:11/255.0 alpha:1]
+                forState:UIControlStateNormal];
     [local.heightAnchor constraintEqualToConstant:60].active = YES;
     [local addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [weakSettings dismissViewControllerAnimated:YES completion:^{
-            self.sideStoreMode = 0;
-            [self attemptStart];
-        }];
+        self.sideStoreMode = 0;
+        [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
     }] forControlEvents:UIControlEventTouchUpInside];
     [connectionStack addArrangedSubview:local];
 
@@ -3172,28 +3213,16 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [receive.heightAnchor constraintEqualToConstant:60].active = YES;
     [receive addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [weakSettings dismissViewControllerAnimated:YES completion:^{
-            self.sideStoreMode = 1;
-            [self attemptStart];
-        }];
+        self.sideStoreMode = 1;
+        [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"iPlayLastMode"];
     }] forControlEvents:UIControlEventTouchUpInside];
     [connectionStack addArrangedSubview:receive];
-
-    UIButton *peer = [UIButton buttonWithType:UIButtonTypeCustom];
-    [peer setTitle:@"Connect this iPhone to another iPlay (A → B)" forState:UIControlStateNormal];
-    [self styleUpstreamButton:peer primary:NO];
-    [peer.heightAnchor constraintEqualToConstant:60].active = YES;
-    [peer addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        [weakSettings dismissViewControllerAnimated:YES completion:^{
-            [self showSideStoreModePicker];
-        }];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [connectionStack addArrangedSubview:peer];
     [root addArrangedSubview:connection];
 
     UIStackView *autoStack = nil;
-    UIView *automatic = [self upstreamSettingsCardWithTitle:@"Automatic connection" stack:&autoStack];
+    UIView *automatic = [self upstreamSettingsCardWithTitle:@"Startup" stack:&autoStack];
+    automatic.backgroundColor = PANEL;
+    automatic.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
     UIStackView *autoRow = [[UIStackView alloc] init];
     autoRow.axis = UILayoutConstraintAxisHorizontal;
     autoRow.alignment = UIStackViewAlignmentCenter;
@@ -3201,8 +3230,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UIStackView *autoText = [[UIStackView alloc] init];
     autoText.axis = UILayoutConstraintAxisVertical;
     autoText.spacing = 5;
-    [autoText addArrangedSubview:[self upstreamLabel:@"Connect when iPlay opens" size:18 color:TEXT bold:YES]];
-    [autoText addArrangedSubview:[self upstreamLabel:@"Start the last local/receiver mode automatically." size:14 color:MUTED bold:NO]];
+    [autoText addArrangedSubview:[self upstreamLabel:@"Connect when iPlay opens" size:20 color:SECONDARY bold:NO]];
+    [autoText addArrangedSubview:[self upstreamLabel:@"Use the last selected A → A / A → B receiver mode." size:14 color:SECONDARY bold:NO]];
     [autoRow addArrangedSubview:autoText];
     UISwitch *autoSwitch = [[UISwitch alloc] init];
     autoSwitch.onTintColor = ACCENT;
@@ -3216,10 +3245,14 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [autoStack addArrangedSubview:autoRow];
     [root addArrangedSubview:automatic];
 
-    UIStackView *displayStack = nil;
-    UIView *display = [self upstreamSettingsCardWithTitle:@"Display and performance" stack:&displayStack];
+    [root addArrangedSubview:categoryLabel(@"Display & video")];
 
-    [displayStack addArrangedSubview:[self upstreamLabel:@"Resolution" size:18 color:TEXT bold:YES]];
+    UIStackView *displayStack = nil;
+    UIView *display = [self upstreamSettingsCardWithTitle:@"Active CarPlay display" stack:&displayStack];
+    display.backgroundColor = PANEL;
+    display.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    [displayStack addArrangedSubview:[self upstreamLabel:@"Resolution" size:20 color:SECONDARY bold:NO]];
     UISegmentedControl *resolution = [[UISegmentedControl alloc]
         initWithItems:@[@"Native", @"80%", @"60%"]];
     NSInteger scale = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayDisplayScaleTenths"];
@@ -3235,7 +3268,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }] forControlEvents:UIControlEventValueChanged];
     [displayStack addArrangedSubview:resolution];
 
-    [displayStack addArrangedSubview:[self upstreamLabel:@"Frame rate" size:18 color:TEXT bold:YES]];
+    [displayStack addArrangedSubview:[self upstreamLabel:@"Frame rate" size:20 color:SECONDARY bold:NO]];
     UISegmentedControl *fps = [[UISegmentedControl alloc] initWithItems:@[@"30", @"60", @"120"]];
     NSInteger fpsValue = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
     if (fpsValue != 30 && fpsValue != 60 && fpsValue != 120) fpsValue = 60;
@@ -3256,8 +3289,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UIStackView *fullText = [[UIStackView alloc] init];
     fullText.axis = UILayoutConstraintAxisVertical;
     fullText.spacing = 5;
-    [fullText addArrangedSubview:[self upstreamLabel:@"Full screen" size:18 color:TEXT bold:YES]];
-    [fullText addArrangedSubview:[self upstreamLabel:@"Hide the app chrome while CarPlay is open." size:14 color:MUTED bold:NO]];
+    [fullText addArrangedSubview:[self upstreamLabel:@"Full screen" size:20 color:SECONDARY bold:NO]];
+    [fullText addArrangedSubview:[self upstreamLabel:@"Fill the iPhone display while CarPlay is open." size:14 color:SECONDARY bold:NO]];
     [fullRow addArrangedSubview:fullText];
     UISwitch *fullSwitch = [[UISwitch alloc] init];
     fullSwitch.onTintColor = ACCENT;
@@ -3268,113 +3301,98 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [fullSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         [[NSUserDefaults standardUserDefaults] setBool:weakFullSwitch.isOn forKey:@"iPlayFullScreen"];
+        if (self.state == StateActive && [self isPhone]) {
+            self.vc.fullscreenMode = weakFullSwitch.isOn;
+            [self.vc.view setNeedsLayout];
+            [self.vc.view layoutIfNeeded];
+        }
     }] forControlEvents:UIControlEventValueChanged];
     [fullRow addArrangedSubview:fullSwitch];
     [displayStack addArrangedSubview:fullRow];
     [root addArrangedSubview:display];
 
-    UIStackView *locationStack = nil;
-    UIView *location = [self upstreamSettingsCardWithTitle:@"Local connection" stack:&locationStack];
-    [locationStack addArrangedSubview:[self upstreamLabel:
-        @"A → A uses LocalDevVPN and the trusted Remote Pairing/RSD CarKit service on this iPhone."
-        size:15 color:MUTED bold:NO]];
-    UIButton *settingsButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    [settingsButton setTitle:@"Open iOS Settings" forState:UIControlStateNormal];
-    [self styleUpstreamButton:settingsButton primary:NO];
-    [settingsButton.heightAnchor constraintEqualToConstant:56].active = YES;
-    [settingsButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    [root addArrangedSubview:categoryLabel(@"Local connection")];
+    UIStackView *localStack = nil;
+    UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
+    localCard.backgroundColor = PANEL;
+    localCard.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+    [localStack addArrangedSubview:[self upstreamLabel:
+        @"LocalDevVPN + trusted Remote Pairing/RSD CarKit carries the real local CarPlay session."
+        size:16 color:SECONDARY bold:NO]];
+    UIButton *iosSettings = [UIButton buttonWithType:UIButtonTypeCustom];
+    [iosSettings setTitle:@"Open iOS Settings" forState:UIControlStateNormal];
+    [self styleUpstreamButton:iosSettings primary:NO];
+    [iosSettings.heightAnchor constraintEqualToConstant:56].active = YES;
+    [iosSettings addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
         if (url) [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [locationStack addArrangedSubview:settingsButton];
-    [root addArrangedSubview:location];
+    [localStack addArrangedSubview:iosSettings];
+    [root addArrangedSubview:localCard];
 
-    UIStackView *aboutStack = nil;
-    UIView *about = [self upstreamSettingsCardWithTitle:@"About" stack:&aboutStack];
-    [aboutStack addArrangedSubview:[self upstreamLabel:
-        @"iPlay is an iOS/SideStore port built from the DiPlay/xcertplay receiver stack. The interface mirrors upstream DiPlay’s DiAuto-derived visual language."
-        size:15 color:MUTED bold:NO]];
-    UIButton *aboutButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    [aboutButton setTitle:@"Technical information" forState:UIControlStateNormal];
-    [self styleUpstreamButton:aboutButton primary:NO];
-    [aboutButton.heightAnchor constraintEqualToConstant:56].active = YES;
-    [aboutButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    UILabel *applyHint = [self upstreamLabel:
+        @"Resolution and frame-rate changes are negotiated when the CarPlay session reconnects."
+        size:15 color:SECONDARY bold:NO];
+    [root addArrangedSubview:applyHint];
+
+    UIButton *save = [UIButton buttonWithType:UIButtonTypeCustom];
+    [save setTitle:(self.state == StateActive ? @"Save and reconnect" : @"Save") forState:UIControlStateNormal];
+    [save setTitleColor:[UIColor colorWithRed:8/255.0 green:17/255.0 blue:11/255.0 alpha:1]
+               forState:UIControlStateNormal];
+    save.backgroundColor = ACCENT;
+    save.layer.cornerRadius = 14;
+    save.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    [save.heightAnchor constraintEqualToConstant:54].active = YES;
+    [save addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [self showAbout];
+        BOOL reconnect = (self.state == StateActive);
+        NSInteger mode = self.sideStoreMode;
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            if (reconnect) {
+                [self stopFlow];
+                [self restartWhenIdleForMode:mode attemptsRemaining:100];
+            } else {
+                [self renderState];
+            }
+        }];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [aboutStack addArrangedSubview:aboutButton];
-    [root addArrangedSubview:about];
+    [root addArrangedSubview:save];
+
+    UIButton *disconnect = [UIButton buttonWithType:UIButtonTypeCustom];
+    [disconnect setTitle:@"Disconnect CarPlay" forState:UIControlStateNormal];
+    [disconnect setTitleColor:TEXT forState:UIControlStateNormal];
+    disconnect.backgroundColor = DANGER;
+    disconnect.layer.cornerRadius = 14;
+    disconnect.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    [disconnect.heightAnchor constraintEqualToConstant:54].active = YES;
+    disconnect.hidden = (self.state != StateActive && self.state != StateAwaitingPhone);
+    [disconnect addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            [self stopFlow];
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [root addArrangedSubview:disconnect];
 
     [self.vc presentViewController:settings animated:YES completion:nil];
 }
 
-#include "upstream_ui.inc"
-
 - (void)buildChrome {
+    /*
+     * Match upstream CarPlayHostActivity.onHostTouch(): no permanent fake
+     * overlay or pause chrome. A three-finger downward swipe opens the
+     * functional settings surface; ordinary one/two-finger input remains
+     * owned by the CarPlay touch path.
+     */
     UIView *content = [self rootContentView];
-    CGFloat sz = 44;
-    CGFloat margin = 18;
-    CGSize bs = content.bounds.size;
 
-    self.controlsOverlay = [[ControlsOverlayView alloc]
-        initWithFrame:content.bounds];
-    self.controlsOverlay.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.controlsOverlay.backgroundColor =
-        [UIColor colorWithWhite:0 alpha:0.52];
-    self.controlsOverlay.hidden = YES;
-    [content addSubview:self.controlsOverlay];
-
-    self.controlsHintLabel = [[UILabel alloc]
-        initWithFrame:CGRectMake(20, bs.height - 58, bs.width - 40, 30)];
-    self.controlsHintLabel.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-    self.controlsHintLabel.text = @"Three-finger tap to return to CarPlay";
-    self.controlsHintLabel.textAlignment = NSTextAlignmentCenter;
-    self.controlsHintLabel.textColor = [UIColor colorWithWhite:1 alpha:0.72];
-    self.controlsHintLabel.font =
-        [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    [self.controlsOverlay addSubview:self.controlsHintLabel];
-
-    /* Close button — top-right, hidden by default */
-    self.closeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.closeButton.frame = CGRectMake(bs.width - sz - margin, margin, sz, sz);
-    self.closeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-    self.closeButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
-    self.closeButton.layer.cornerRadius = sz / 2.0;
-    [self.closeButton setTitle:@"×" forState:UIControlStateNormal];
-    [self.closeButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.closeButton.titleLabel.font = [UIFont systemFontOfSize:30 weight:UIFontWeightLight];
-    self.closeButton.titleEdgeInsets = UIEdgeInsetsMake(-3, 0, 0, 0);
-    self.closeButton.hidden = YES;
-    [self.closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
-    [content addSubview:self.closeButton];
-
-    /* Info button — top-left, always shown */
-    self.infoButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.infoButton.frame = CGRectMake(margin, margin, sz, sz);
-    self.infoButton.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;
-    self.infoButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
-    self.infoButton.layer.cornerRadius = sz / 2.0;
-    [self.infoButton setTitle:@"i" forState:UIControlStateNormal];
-    [self.infoButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.infoButton.titleLabel.font = [UIFont fontWithName:@"Georgia-Italic" size:22];
-    if (!self.infoButton.titleLabel.font) {
-        self.infoButton.titleLabel.font = [UIFont italicSystemFontOfSize:22];
-    }
-    [self.infoButton addTarget:self action:@selector(infoTapped) forControlEvents:UIControlEventTouchUpInside];
-    [content addSubview:self.infoButton];
-
-    self.controlsGesture = [[UITapGestureRecognizer alloc]
+    self.controlsGesture = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(toggleChrome:)];
-    self.controlsGesture.numberOfTouchesRequired = 3;
-    self.controlsGesture.numberOfTapsRequired = 1;
+    self.controlsGesture.minimumNumberOfTouches = 3;
+    self.controlsGesture.maximumNumberOfTouches = 3;
     self.controlsGesture.cancelsTouchesInView = YES;
     self.controlsGesture.delaysTouchesBegan = NO;
-    /* UIGestureRecognizer delays touch-up delivery by default while it
-     * decides whether a gesture matches. That made every ordinary CarPlay
-     * tap wait on the three-finger menu recognizer. */
     self.controlsGesture.delaysTouchesEnded = NO;
     self.controlsGesture.enabled = NO;
     [content addGestureRecognizer:self.controlsGesture];
@@ -3407,7 +3425,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [self layoutSetupOverlay];
 
     self.setupOverlay.hidden = NO;
-    self.closeButton.hidden = YES;
     self.controlsGesture.enabled = (self.state == StateActive);
     if (self.state != StateActive) {
         /* Restore the 1024x768 canvas in every non-Active state. */
@@ -3417,11 +3434,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         }
         self.videoView.transform = CGAffineTransformIdentity;
         self.chromeVisible = NO;
-        self.controlsOverlay.hidden = YES;
-        self.controlsOverlay.alpha = 1;
-        self.infoButton.hidden = iPlayIsStockSideStoreBuild();
-        self.infoButton.alpha = 1.0;
-        self.closeButton.alpha = 1.0;
     }
     self.spinner.hidden = YES; [self.spinner stopAnimating];
     self.primaryButton.hidden = YES;
@@ -3553,10 +3565,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             }
             self.videoView.transform = CGAffineTransformIdentity;
             self.chromeVisible = NO;
-            self.controlsOverlay.hidden = YES;
-            self.controlsOverlay.alpha = 1;
-            self.infoButton.hidden = YES;
-            self.closeButton.hidden = YES;
             break;
 
         case StateStopping:
@@ -3657,37 +3665,29 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)closeTapped { [self stopFlow]; }
 - (void)infoTapped  { [self showAbout]; }
 
-- (void)toggleChrome:(UITapGestureRecognizer *)gesture {
-    if (self.state != StateActive ||
-        gesture.state != UIGestureRecognizerStateRecognized) return;
-    if (self.chromeVisible) {
-        [self hideChrome];
-        return;
-    }
-    self.chromeVisible = YES;
-    self.controlsOverlay.alpha = 0;
-    self.controlsOverlay.hidden = NO;
-    self.infoButton.hidden = NO;
-    self.closeButton.hidden = NO;
-    [UIView animateWithDuration:0.18 animations:^{
-        self.controlsOverlay.alpha = 1;
-        self.infoButton.alpha = 1;
-        self.closeButton.alpha = 1;
-    }];
-}
-- (void)hideChrome {
-    self.chromeVisible = NO;
-    [UIView animateWithDuration:0.18 animations:^{
-        self.controlsOverlay.alpha = 0;
-        self.infoButton.alpha = 0;
-        self.closeButton.alpha = 0;
-    } completion:^(BOOL d) {
-        if (self.state == StateActive) {
-            self.controlsOverlay.hidden = YES;
-            self.infoButton.hidden = YES;
-            self.closeButton.hidden = YES;
+- (void)toggleChrome:(UIPanGestureRecognizer *)gesture {
+    if (self.state != StateActive) return;
+
+    if (gesture.state == UIGestureRecognizerStateChanged) {
+        CGPoint translation = [gesture translationInView:[self rootContentView]];
+        /*
+         * Upstream constants:
+         *   THREE_FINGER_SWIPE_DISTANCE_DP = 72
+         *   THREE_FINGER_SWIPE_DIRECTION_RATIO = 1.15
+         */
+        if (translation.y >= 72.0 &&
+            translation.y >= fabs(translation.x) * 1.15) {
+            ip_log("[UI] upstream three-finger swipe-down opened CarPlay settings");
+            gesture.enabled = NO;
+            gesture.enabled = YES;
+            [self showUpstreamSettings];
         }
-    }];
+    }
+}
+
+- (void)hideChrome {
+    /* Kept for legacy callers. Upstream no longer uses a fake pause scrim. */
+    self.chromeVisible = NO;
 }
 
 /* ─── Action helpers ───────────────────────────────────────── */
@@ -3713,6 +3713,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
            flowName.UTF8String,
            flowSSID.UTF8String);
     self.bluetoothHandedOff = NO;
+    if (iPlayIsStockSideStoreBuild() &&
+        (self.sideStoreMode == 0 || self.sideStoreMode == 1)) {
+        [[NSUserDefaults standardUserDefaults] setInteger:self.sideStoreMode
+                                                  forKey:@"iPlayLastMode"];
+    }
     if (iPlayIsStockSideStoreBuild()) {
         if (self.sideStoreMode == 0) {
             /* A -> A is local: there is no physical Bluetooth bootstrap. */
