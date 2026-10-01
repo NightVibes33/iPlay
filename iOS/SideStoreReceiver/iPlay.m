@@ -3135,7 +3135,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
         @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
-        @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel"
+        @"iPlayManufacturer", @"iPlayModel"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3309,10 +3309,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
     NSString *savedManufacturer = [settingsDefaults stringForKey:@"iPlayManufacturer"];
     NSString *savedModel = [settingsDefaults stringForKey:@"iPlayModel"];
-    NSString *savedOEMLabel = [settingsDefaults stringForKey:@"iPlayOEMLabel"];
     if (savedManufacturer.length == 0) savedManufacturer = @"DiPlay";
     if (savedModel.length == 0) savedModel = @"DiPlay";
-    if (savedOEMLabel.length == 0) savedOEMLabel = @"BYD";
 
     [identityStack addArrangedSubview:
         [self upstreamLabel:@"Manufacturer" size:18 color:SECONDARY bold:NO]];
@@ -3371,36 +3369,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }] forControlEvents:UIControlEventEditingChanged];
     [identityStack addArrangedSubview:modelField];
 
-    [identityStack addArrangedSubview:
-        [self upstreamLabel:@"OEM label" size:18 color:SECONDARY bold:NO]];
-    UITextField *oemLabelField = [[UITextField alloc] init];
-    oemLabelField.text = savedOEMLabel;
-    oemLabelField.textColor = TEXT;
-    oemLabelField.backgroundColor =
-        [UIColor colorWithRed:28/255.0 green:36/255.0 blue:42/255.0 alpha:1];
-    oemLabelField.layer.cornerRadius = 12;
-    oemLabelField.font = [UIFont systemFontOfSize:17];
-    oemLabelField.autocorrectionType = UITextAutocorrectionTypeNo;
-    oemLabelField.autocapitalizationType = UITextAutocapitalizationTypeWords;
-    oemLabelField.clearButtonMode = UITextFieldViewModeWhileEditing;
-    oemLabelField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 14, 1)];
-    oemLabelField.leftViewMode = UITextFieldViewModeAlways;
-    [oemLabelField.heightAnchor constraintEqualToConstant:52].active = YES;
-    __weak UITextField *weakOEMLabelField = oemLabelField;
-    [oemLabelField addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        NSString *value =
-            [weakOEMLabelField.text stringByTrimmingCharactersInSet:
-                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (value.length > 0)
-            [settingsDefaults setObject:value forKey:@"iPlayOEMLabel"];
-        else
-            [settingsDefaults removeObjectForKey:@"iPlayOEMLabel"];
-    }] forControlEvents:UIControlEventEditingChanged];
-    [identityStack addArrangedSubview:oemLabelField];
-
     [identityStack addArrangedSubview:[self upstreamLabel:
-        @"Manufacturer, model and OEM label are published by the receiver after Save and reconnect."
+        @"Manufacturer and model are published in AirPlay /info and DNS-SD after Save and reconnect."
         size:14 color:SECONDARY bold:NO]];
     [root addArrangedSubview:identityCard];
 
