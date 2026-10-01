@@ -154,6 +154,24 @@ static bool g_baa_broker_mode = false;
  * helper in this process, so advertise HomeKit/CarPlay without MFi-SAP. */
 static bool g_local_simulator_mode = false;
 
+static bool png_pixel_dimensions(NSData *data, uint32_t *outWidth, uint32_t *outHeight) {
+    if (!data || data.length < 24 || !outWidth || !outHeight) return false;
+    const uint8_t *bytes = data.bytes;
+    static const uint8_t signature[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+    if (memcmp(bytes, signature, sizeof(signature)) != 0) return false;
+    if (memcmp(bytes + 12, "IHDR", 4) != 0) return false;
+    uint32_t width =
+        ((uint32_t)bytes[16] << 24) | ((uint32_t)bytes[17] << 16) |
+        ((uint32_t)bytes[18] << 8) | (uint32_t)bytes[19];
+    uint32_t height =
+        ((uint32_t)bytes[20] << 24) | ((uint32_t)bytes[21] << 16) |
+        ((uint32_t)bytes[22] << 8) | (uint32_t)bytes[23];
+    if (width == 0 || height == 0) return false;
+    *outWidth = width;
+    *outHeight = height;
+    return true;
+}
+
 static void parse_args(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "--name") || !strcmp(argv[i], "-n")) &&
@@ -1107,14 +1125,20 @@ static void handle_info(int sock, const HTTPReq *r) {
             }
         }
         if (oemRenderedIcon.length > 0) {
-            info[@"oemIcons"] = @[
-                @{
-                    @"widthPixels": @(120),
-                    @"heightPixels": @(120),
-                    @"prerendered": @YES,
-                    @"imageData": oemRenderedIcon
-                }
-            ];
+            uint32_t iconWidth = 0, iconHeight = 0;
+            if (!png_pixel_dimensions(oemRenderedIcon, &iconWidth, &iconHeight)) {
+                printf("[AP] WARN: OEM icon PNG dimensions unavailable; omitting oemIcons\n");
+            } else {
+                info[@"oemIcons"] = @[
+                    @{
+                        @"widthPixels": @(iconWidth),
+                        @"heightPixels": @(iconHeight),
+                        @"prerendered": @YES,
+                        @"imageData": oemRenderedIcon
+                    }
+                ];
+                printf("[AP] OEM icon metadata: %ux%u\n", iconWidth, iconHeight);
+            }
         } else {
             printf("[AP] WARN: OEM pre-rendered icon unavailable\n");
         }
