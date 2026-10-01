@@ -444,7 +444,7 @@
     [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"Connect this iPhone to another iPlay (A → B)"
                                                           primary:NO action:^{
         [weakPage dismissViewControllerAnimated:YES completion:^{
-            [self showSideStoreModePicker];
+            [self startRemoteAtoB];
         }];
     }]];
     [root addArrangedSubview:choose];
