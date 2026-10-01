@@ -3179,9 +3179,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UISwitch *autoSwitch = [[UISwitch alloc] init];
     autoSwitch.onTintColor = ACCENT;
     autoSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"];
+    __weak UISwitch *weakAutoSwitch = autoSwitch;
     [autoSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        UISwitch *sw = (UISwitch *)action.sender;
-        [[NSUserDefaults standardUserDefaults] setBool:sw.isOn forKey:@"iPlayAutoConnect"];
+        (void)action;
+        [[NSUserDefaults standardUserDefaults] setBool:weakAutoSwitch.isOn forKey:@"iPlayAutoConnect"];
     }] forControlEvents:UIControlEventValueChanged];
     [autoRow addArrangedSubview:autoSwitch];
     [autoStack addArrangedSubview:autoRow];
@@ -3197,9 +3198,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     if (scale != 8 && scale != 6) scale = 10;
     resolution.selectedSegmentIndex = scale == 10 ? 0 : (scale == 8 ? 1 : 2);
     resolution.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakResolution = resolution;
     [resolution addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        UISegmentedControl *seg = (UISegmentedControl *)action.sender;
-        NSInteger value = seg.selectedSegmentIndex == 0 ? 10 : (seg.selectedSegmentIndex == 1 ? 8 : 6);
+        (void)action;
+        NSInteger index = weakResolution.selectedSegmentIndex;
+        NSInteger value = index == 0 ? 10 : (index == 1 ? 8 : 6);
         [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayDisplayScaleTenths"];
     }] forControlEvents:UIControlEventValueChanged];
     [displayStack addArrangedSubview:resolution];
@@ -3210,9 +3213,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     if (fpsValue != 30 && fpsValue != 60 && fpsValue != 120) fpsValue = 60;
     fps.selectedSegmentIndex = fpsValue == 30 ? 0 : (fpsValue == 60 ? 1 : 2);
     fps.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakFPS = fps;
     [fps addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        UISegmentedControl *seg = (UISegmentedControl *)action.sender;
-        NSInteger value = seg.selectedSegmentIndex == 0 ? 30 : (seg.selectedSegmentIndex == 1 ? 60 : 120);
+        (void)action;
+        NSInteger index = weakFPS.selectedSegmentIndex;
+        NSInteger value = index == 0 ? 30 : (index == 1 ? 60 : 120);
         [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayFrameRate"];
     }] forControlEvents:UIControlEventValueChanged];
     [displayStack addArrangedSubview:fps];
@@ -3231,9 +3236,10 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayFullScreen"] == nil)
         [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"iPlayFullScreen"];
     fullSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayFullScreen"];
+    __weak UISwitch *weakFullSwitch = fullSwitch;
     [fullSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        UISwitch *sw = (UISwitch *)action.sender;
-        [[NSUserDefaults standardUserDefaults] setBool:sw.isOn forKey:@"iPlayFullScreen"];
+        (void)action;
+        [[NSUserDefaults standardUserDefaults] setBool:weakFullSwitch.isOn forKey:@"iPlayFullScreen"];
     }] forControlEvents:UIControlEventValueChanged];
     [fullRow addArrangedSubview:fullSwitch];
     [displayStack addArrangedSubview:fullRow];
@@ -3415,7 +3421,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
                 self.secondaryButton.hidden = NO;
                 self.tertiaryButton.hidden = NO;
-                self.receiverButton.hidden = NO;
+                self.receiverButton.hidden = ([self rootContentView].bounds.size.width < 850.0);
                 self.carHintLabel.text = @"A → A uses LocalDevVPN + trusted Remote Pairing.";
                 self.carHintLabel.hidden = NO;
                 break;
