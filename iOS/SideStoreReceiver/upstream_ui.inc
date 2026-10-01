@@ -711,7 +711,7 @@
         [defaults setBool:YES forKey:@"iPlayFullScreen"];
     [self upstreamAddToggleTo:displayStack
                         title:@"Full screen"
-                  description:@"Hide iPlay’s own chrome while CarPlay is open."
+                  description:@"Fill the iPhone display while CarPlay is open."
                         value:[defaults boolForKey:@"iPlayFullScreen"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayFullScreen"];
