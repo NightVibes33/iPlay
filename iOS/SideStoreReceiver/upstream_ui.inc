@@ -226,6 +226,7 @@
     [header addArrangedSubview:spacer];
     UIButton *back = [self upstreamButtonWithTitle:backTitle ?: @"Back"
                                            primary:NO
+                                            height:56
                                             action:^{
         [page dismissViewControllerAnimated:YES completion:nil];
     }];
