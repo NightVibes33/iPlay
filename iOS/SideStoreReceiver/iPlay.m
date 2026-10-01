@@ -3567,6 +3567,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     disconnect.hidden = (self.state != StateActive && self.state != StateAwaitingPhone);
     [disconnect addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
+        restoreBaseline();
         [weakSettings dismissViewControllerAnimated:YES completion:^{
             [self stopFlow];
         }];
