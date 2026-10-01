@@ -19,6 +19,52 @@ mkdir -p "$OUT/Payload/iPlay.app"
 
 COMMON=(-target "$TARGET" -isysroot "$SDK" -miphoneos-version-min=16.0 -O2)
 
+echo "[0/6] Verify single upstream settings surface"
+python3 - "$SRC/iPlay.m" "$SRC/upstream_ui.inc" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+main = Path(sys.argv[1]).read_text()
+home = Path(sys.argv[2]).read_text()
+
+definitions = re.findall(r"(?m)^- \(void\)showUpstreamSettings\s*\{", main)
+if len(definitions) != 1:
+    raise SystemExit(f"expected exactly one showUpstreamSettings implementation, found {len(definitions)}")
+
+if "showUpstreamSettingsReal" in main or "showUpstreamSettingsReal" in home:
+    raise SystemExit("obsolete duplicate showUpstreamSettingsReal path returned")
+
+if "showUpstreamSettings" in home:
+    raise SystemExit("upstream_ui.inc must not define a second settings surface")
+
+for obsolete in (
+    "showUpstreamConnectionSetupFrom",
+    "showUpstreamAboutPageFrom",
+    "upstreamPageControllerWithBack",
+    "upstreamSectionWithTitle",
+):
+    if obsolete in home:
+        raise SystemExit(f"obsolete duplicate-settings helper returned: {obsolete}")
+
+def method_body(name: str) -> str:
+    marker = f"- (void){name}"
+    start = main.find(marker)
+    if start < 0:
+        raise SystemExit(f"missing {name} entry point")
+    next_method = main.find("\n- (", start + len(marker))
+    return main[start:] if next_method < 0 else main[start:next_method]
+
+for entry in ("tertiaryTapped", "toggleChrome:"):
+    if "[self showUpstreamSettings]" not in method_body(entry):
+        raise SystemExit(f"{entry} no longer routes to the shared upstream settings surface")
+
+if main.count('#include "upstream_ui.inc"') != 1:
+    raise SystemExit("upstream_ui.inc must be included exactly once")
+
+print("single upstream settings surface verified")
+PY
+
 echo "[1/6] Build embedded LocalDevVPN / trusted-RSD core"
 AIRCARD="$OUT/AirCard-iOS"
 git clone --quiet https://github.com/Mak5er/AirCard-iOS.git "$AIRCARD"
