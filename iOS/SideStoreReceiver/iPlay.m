@@ -4185,17 +4185,17 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
         applyHint.text = [NSString stringWithFormat:
             @"Resolution handshake: %u x %u\n"
-             "Identity: %@ / %@\n"
-             "OEM label: %@\n"
-             "Frame rate: %u fps\n"
-             "Detected maximum: %u x %u px\n"
-             "Physical reference: %@ = %ld mm\n"
-             "CarPlay physical size: %ld x %ld mm\n"
-             "Driving side: %@\n"
-             "Full screen: %@\n"
-             "Video transport: %@\n"
-             "Location reporting: %@\n"
-             "Safe area: %@",
+             @"Identity: %@ / %@\n"
+             @"OEM label: %@\n"
+             @"Frame rate: %u fps\n"
+             @"Detected maximum: %u x %u px\n"
+             @"Physical reference: %@ = %ld mm\n"
+             @"CarPlay physical size: %ld x %ld mm\n"
+             @"Driving side: %@\n"
+             @"Full screen: %@\n"
+             @"Video transport: %@\n"
+             @"Location reporting: %@\n"
+             @"Safe area: %@",
             previewDisplay.width, previewDisplay.height,
             previewManufacturer, previewModel,
             previewOEM,
