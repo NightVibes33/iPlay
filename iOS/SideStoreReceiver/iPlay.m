@@ -4099,7 +4099,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [root addArrangedSubview:localCard];
 
     UILabel *applyHint = [self upstreamLabel:
-        @"Physical size, resolution, frame rate, HEVC, driving side, music buffer and audio routing are applied by the real receiver runtime when the CarPlay session reconnects."
+        @"Physical size, resolution, frame rate, HEVC, driving side, music buffer, audio routing and A → A location reporting are applied by the real receiver runtime when the CarPlay session reconnects."
         size:15 color:SECONDARY bold:NO];
     [root addArrangedSubview:applyHint];
 
