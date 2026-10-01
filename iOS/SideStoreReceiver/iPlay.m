@@ -3780,6 +3780,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     refreshSafeSummary();
 
     NSMutableArray<UISlider *> *safeSliders = [NSMutableArray array];
+    NSMutableArray<UIStackView *> *safeEditorRows = [NSMutableArray array];
     NSArray<NSString *> *safeTitles = @[@"Left", @"Top", @"Right", @"Bottom"];
     NSArray<NSString *> *safeKeys = @[
         @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
@@ -3792,6 +3793,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         safeRow.axis = UILayoutConstraintAxisHorizontal;
         safeRow.alignment = UIStackViewAlignmentCenter;
         safeRow.spacing = 14;
+        safeRow.hidden = YES;
+        [safeEditorRows addObject:safeRow];
         UILabel *safeLabel =
             [self upstreamLabel:safeTitles[safeIndex] size:16 color:SECONDARY bold:NO];
         [safeLabel.widthAnchor constraintEqualToConstant:70].active = YES;
@@ -3838,6 +3841,21 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     safeButtons.axis = UILayoutConstraintAxisHorizontal;
     safeButtons.distribution = UIStackViewDistributionFillEqually;
     safeButtons.spacing = 12;
+
+    UIButton *setSafe = [UIButton buttonWithType:UIButtonTypeCustom];
+    [setSafe setTitle:@"Set" forState:UIControlStateNormal];
+    [self styleUpstreamButton:setSafe primary:NO];
+    __weak UIButton *weakSetSafe = setSafe;
+    [setSafe addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        BOOL opening = safeEditorRows.firstObject.hidden;
+        for (UIStackView *row in safeEditorRows) row.hidden = !opening;
+        [weakSetSafe setTitle:(opening ? @"Done" : @"Set")
+                     forState:UIControlStateNormal];
+        ip_log("[UI] safe area editor %s", opening ? "opened" : "closed");
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [safeButtons addArrangedSubview:setSafe];
+
     UIButton *resetSafe = [UIButton buttonWithType:UIButtonTypeCustom];
     [resetSafe setTitle:@"Reset" forState:UIControlStateNormal];
     [self styleUpstreamButton:resetSafe primary:NO];
