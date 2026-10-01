@@ -70,6 +70,27 @@ static const char *iPlayServiceLogPath(void) {
     return path;
 }
 
+static const char *iPlayServiceStdioLogPath(void) {
+    static char path[1024] = {0};
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<NSString *> *documents =
+            NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                NSUserDomainMask, YES);
+        NSString *base = documents.firstObject ?: NSTemporaryDirectory();
+        NSString *logs = [base stringByAppendingPathComponent:@"iPlay Logs"];
+        [[NSFileManager defaultManager]
+            createDirectoryAtPath:logs
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:nil];
+        NSString *file =
+            [logs stringByAppendingPathComponent:@"iplay-service-stdio.log"];
+        strlcpy(path, file.fileSystemRepresentation, sizeof(path));
+    });
+    return path;
+}
+
 int showcase_service_log_printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -6306,19 +6327,24 @@ static void start_mdns_reannounce_loop(DNSServiceRef airplayRef,
 
 int main(int argc, char *argv[]) {
     /*
-     * This service is linked in-process in the SideStore build. Capture its
-     * stdout/stderr in the app sandbox so exported diagnostics contain the
-     * actual receiver startup and RTSP/AirPlay negotiation trace.
+     * The SideStore build invokes this entry point in-process more than once
+     * across retry/reconnect cycles. Never reuse the previous UI IPC socket.
      */
-    @autoreleasepool {
-        NSString *serviceLogPath =
-            [NSTemporaryDirectory() stringByAppendingPathComponent:@"iplay-service.log"];
-        FILE *serviceLog = fopen(serviceLogPath.fileSystemRepresentation, "a");
-        if (serviceLog) {
-            dup2(fileno(serviceLog), STDOUT_FILENO);
-            dup2(fileno(serviceLog), STDERR_FILENO);
-            fclose(serviceLog);
-        }
+    if (g_app_sock >= 0) {
+        close(g_app_sock);
+        g_app_sock = -1;
+    }
+    g_app_port = 0;
+
+    /*
+     * Capture raw stdout/stderr separately from the timestamped service log.
+     * Both files live in Documents/iPlay Logs and are visible in Files.
+     */
+    FILE *serviceStdio = fopen(iPlayServiceStdioLogPath(), "a");
+    if (serviceStdio) {
+        dup2(fileno(serviceStdio), STDOUT_FILENO);
+        dup2(fileno(serviceStdio), STDERR_FILENO);
+        fclose(serviceStdio);
     }
 
     /* Line-buffered stdout/stderr so logs survive SIGTERM (default is
