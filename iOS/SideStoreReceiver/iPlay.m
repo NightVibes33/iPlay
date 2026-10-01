@@ -3197,30 +3197,30 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
 - (UIView *)upstreamSettingsCardWithTitle:(NSString *)title
                                     stack:(UIStackView **)outStack {
-    UIColor *SURFACE = [UIColor colorWithRed:21/255.0 green:30/255.0 blue:44/255.0 alpha:1];
-    UIColor *BORDER = [UIColor colorWithRed:42/255.0 green:56/255.0 blue:75/255.0 alpha:1];
-    UIColor *TEXT = [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
-    UIView *card = [[UIView alloc] init];
-    card.backgroundColor = SURFACE;
-    card.layer.cornerRadius = 20;
-    card.layer.borderWidth = 1;
-    card.layer.borderColor = BORDER.CGColor;
+    UIColor *SECONDARY =
+        [UIColor colorWithRed:170/255.0 green:180/255.0 blue:190/255.0 alpha:1];
+    UIView *section = [[UIView alloc] init];
+    section.backgroundColor = [UIColor clearColor];
 
     UIStackView *stack = [[UIStackView alloc] init];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 12;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [card addSubview:stack];
+    [section addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
-        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24],
-        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:22],
-        [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-22]
+        [stack.leadingAnchor constraintEqualToAnchor:section.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:section.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:section.topAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:section.bottomAnchor]
     ]];
-    UILabel *heading = [self upstreamLabel:title size:22 color:TEXT bold:YES];
-    [stack addArrangedSubview:heading];
+    if (title.length) {
+        UILabel *heading =
+            [self upstreamLabel:title size:20 color:SECONDARY bold:NO];
+        [stack addArrangedSubview:heading];
+        [stack setCustomSpacing:10 afterView:heading];
+    }
     if (outStack) *outStack = stack;
-    return card;
+    return section;
 }
 
 - (void)restartWhenIdleForMode:(NSInteger)mode attemptsRemaining:(NSInteger)attempts {
@@ -3397,8 +3397,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     UIStackView *connectionStack = nil;
     UIView *connection = [self upstreamSettingsCardWithTitle:@"Connection mode" stack:&connectionStack];
-    connection.backgroundColor = PANEL;
-    connection.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     UISegmentedControl *modeSelector = [[UISegmentedControl alloc]
         initWithItems:@[@"This iPhone · A → A", @"Receive · A → B", @"Send · A → B"]];
@@ -3445,8 +3443,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     UIStackView *autoStack = nil;
     UIView *automatic = [self upstreamSettingsCardWithTitle:@"Startup" stack:&autoStack];
-    automatic.backgroundColor = PANEL;
-    automatic.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
     UIStackView *autoRow = [[UIStackView alloc] init];
     autoRow.axis = UILayoutConstraintAxisHorizontal;
     autoRow.alignment = UIStackViewAlignmentCenter;
@@ -3498,9 +3494,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIStackView *identityStack = nil;
     UIView *identityCard =
         [self upstreamSettingsCardWithTitle:@"Receiver identity" stack:&identityStack];
-    identityCard.backgroundColor = PANEL;
-    identityCard.layer.borderColor =
-        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     NSString *savedManufacturer = [settingsDefaults stringForKey:@"iPlayManufacturer"];
     NSString *savedModel = [settingsDefaults stringForKey:@"iPlayModel"];
@@ -3635,6 +3628,32 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [iconActions addArrangedSubview:defaultIcon];
     [iconRow addArrangedSubview:iconActions];
     [identityStack addArrangedSubview:iconRow];
+    [identityStack setCustomSpacing:26 afterView:iconRow];
+    UIStackView *rhdRow = [[UIStackView alloc] init];
+    rhdRow.axis = UILayoutConstraintAxisHorizontal;
+    rhdRow.alignment = UIStackViewAlignmentCenter;
+    rhdRow.spacing = 16;
+    UIStackView *rhdText = [[UIStackView alloc] init];
+    rhdText.axis = UILayoutConstraintAxisVertical;
+    rhdText.spacing = 5;
+    [rhdText addArrangedSubview:[self upstreamLabel:@"Right-hand drive"
+                                              size:20 color:SECONDARY bold:NO]];
+    [rhdText addArrangedSubview:[self upstreamLabel:
+        @"Report right-hand-drive layout so CarPlay places driver-side controls correctly."
+        size:14 color:SECONDARY bold:NO]];
+    [rhdRow addArrangedSubview:rhdText];
+    UISwitch *rhdSwitch = [[UISwitch alloc] init];
+    rhdSwitch.onTintColor = ACCENT;
+    rhdSwitch.on =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
+    __weak UISwitch *weakRhdSwitch = rhdSwitch;
+    [rhdSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakRhdSwitch.isOn forKey:@"iPlayRightHandDrive"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [rhdRow addArrangedSubview:rhdSwitch];
+    [identityStack addArrangedSubview:rhdRow];
 
     [identityStack addArrangedSubview:[self upstreamLabel:
         @"Manufacturer, model, OEM label and the square AirPlay icon are published by the real receiver after Save and reconnect."
@@ -3645,8 +3664,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     UIStackView *displayStack = nil;
     UIView *display = [self upstreamSettingsCardWithTitle:@"Active CarPlay display" stack:&displayStack];
-    display.backgroundColor = PANEL;
-    display.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     [displayStack addArrangedSubview:
         [self upstreamLabel:@"Physical size basis" size:20 color:SECONDARY bold:NO]];
@@ -3826,31 +3843,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [hevcRow addArrangedSubview:hevcSwitch];
     [displayStack addArrangedSubview:hevcRow];
 
-    UIStackView *rhdRow = [[UIStackView alloc] init];
-    rhdRow.axis = UILayoutConstraintAxisHorizontal;
-    rhdRow.alignment = UIStackViewAlignmentCenter;
-    rhdRow.spacing = 16;
-    UIStackView *rhdText = [[UIStackView alloc] init];
-    rhdText.axis = UILayoutConstraintAxisVertical;
-    rhdText.spacing = 5;
-    [rhdText addArrangedSubview:[self upstreamLabel:@"Right-hand drive"
-                                              size:20 color:SECONDARY bold:NO]];
-    [rhdText addArrangedSubview:[self upstreamLabel:
-        @"Report right-hand-drive layout so CarPlay places driver-side controls correctly."
-        size:14 color:SECONDARY bold:NO]];
-    [rhdRow addArrangedSubview:rhdText];
-    UISwitch *rhdSwitch = [[UISwitch alloc] init];
-    rhdSwitch.onTintColor = ACCENT;
-    rhdSwitch.on =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
-    __weak UISwitch *weakRhdSwitch = rhdSwitch;
-    [rhdSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-        (void)action;
-        [[NSUserDefaults standardUserDefaults]
-            setBool:weakRhdSwitch.isOn forKey:@"iPlayRightHandDrive"];
-    }] forControlEvents:UIControlEventValueChanged];
-    [rhdRow addArrangedSubview:rhdSwitch];
-    [displayStack addArrangedSubview:rhdRow];
 
     [displayStack addArrangedSubview:
         [self upstreamLabel:@"Safe area" size:20 color:SECONDARY bold:NO]];
@@ -3994,6 +3986,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [drawOutsideRow addArrangedSubview:drawOutsideSwitch];
     [displayStack addArrangedSubview:drawOutsideRow];
 
+    [root addArrangedSubview:display];
+
+    [root addArrangedSubview:categoryLabel(@"Window")];
+    UIStackView *windowStack = nil;
+    UIView *windowSection =
+        [self upstreamSettingsCardWithTitle:@"Full screen" stack:&windowStack];
     UIStackView *fullRow = [[UIStackView alloc] init];
     fullRow.axis = UILayoutConstraintAxisHorizontal;
     fullRow.alignment = UIStackViewAlignmentCenter;
@@ -4019,15 +4017,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         }
     }] forControlEvents:UIControlEventValueChanged];
     [fullRow addArrangedSubview:fullSwitch];
-    [displayStack addArrangedSubview:fullRow];
-    [root addArrangedSubview:display];
+    [windowStack addArrangedSubview:fullRow];
+    [root addArrangedSubview:windowSection];
 
     [root addArrangedSubview:categoryLabel(@"Audio")];
     UIStackView *audioStack = nil;
     UIView *audioCard = [self upstreamSettingsCardWithTitle:@"Audio routing" stack:&audioStack];
-    audioCard.backgroundColor = PANEL;
-    audioCard.layer.borderColor =
-        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     UIStackView *audioFocusRow = [[UIStackView alloc] init];
     audioFocusRow.axis = UILayoutConstraintAxisHorizontal;
@@ -4063,9 +4058,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIStackView *locationStack = nil;
     UIView *locationCard =
         [self upstreamSettingsCardWithTitle:@"Report location to iPhone" stack:&locationStack];
-    locationCard.backgroundColor = PANEL;
-    locationCard.layer.borderColor =
-        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     UIStackView *locationRow = [[UIStackView alloc] init];
     locationRow.axis = UILayoutConstraintAxisHorizontal;
@@ -4097,9 +4089,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIStackView *diagnosticStack = nil;
     UIView *diagnosticCard =
         [self upstreamSettingsCardWithTitle:@"Receiver logs" stack:&diagnosticStack];
-    diagnosticCard.backgroundColor = PANEL;
-    diagnosticCard.layer.borderColor =
-        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
     [diagnosticStack addArrangedSubview:[self upstreamLabel:
         @"Export the live iPlay application and receiver log as a local text report."
         size:15 color:SECONDARY bold:NO]];
@@ -4117,8 +4106,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
-    localCard.backgroundColor = PANEL;
-    localCard.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
     [localStack addArrangedSubview:[self upstreamLabel:
         @"LocalDevVPN + trusted Remote Pairing/RSD CarKit carries the real local CarPlay session."
         size:16 color:SECONDARY bold:NO]];
