@@ -641,9 +641,14 @@ static BOOL get_param(const Buffer *params, uint16_t target, const uint8_t **dat
 static BOOL send_identification(Control *c, NSString *displayName) {
     Buffer p; buf_init(&p, 1024);
     const char *name = displayName.length ? displayName.UTF8String : "iPlay";
+    NSUserDefaults *identityDefaults = [NSUserDefaults standardUserDefaults];
+    NSString *model = [identityDefaults stringForKey:@"iPlayModel"];
+    NSString *manufacturer = [identityDefaults stringForKey:@"iPlayManufacturer"];
+    if (model.length == 0) model = @"DiPlay";
+    if (manufacturer.length == 0) manufacturer = @"DiPlay";
     param_string(&p, 0, name);
-    param_string(&p, 1, "iPlay-A2A");
-    param_string(&p, 2, "NightVibes33");
+    param_string(&p, 1, model.UTF8String);
+    param_string(&p, 2, manufacturer.UTF8String);
     param_string(&p, 3, "IPL-A2A-0001");
     param_string(&p, 4, "0.1");
     param_string(&p, 5, "1.0");
@@ -666,6 +671,8 @@ static BOOL send_identification(Control *c, NSString *displayName) {
         0xea00,0xea01,0x5001,0x5201,0x5202,0xae01,
         0x4158,0x4155,0x4300,0x4e0e
     };
+    local_log("iAP2 identity name=%s manufacturer=%s model=%s",
+              name, manufacturer.UTF8String, model.UTF8String);
     BOOL locationEnabled =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
     uint16_t sent[sizeof(sentBase)/sizeof(sentBase[0]) + 1];
