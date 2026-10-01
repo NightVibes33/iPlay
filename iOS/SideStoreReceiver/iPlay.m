@@ -68,8 +68,30 @@ extern volatile int g_iPlayAirPlayServerReady;
 #define DIAGNOSTICS_ENABLED_KEY @"diagnosticsEnabled"
 static FILE *g_logfile = NULL;
 
+static NSString *iPlayDocumentsDirectory(void) {
+    NSArray<NSString *> *paths =
+        NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                            NSUserDomainMask, YES);
+    return paths.firstObject ?: NSTemporaryDirectory();
+}
+
+static NSString *iPlayLogsDirectory(void) {
+    static NSString *directory = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        directory = [iPlayDocumentsDirectory()
+            stringByAppendingPathComponent:@"iPlay Logs"];
+        [[NSFileManager defaultManager]
+            createDirectoryAtPath:directory
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:nil];
+    });
+    return directory;
+}
+
 static NSString *iPlaySandboxLogPath(NSString *filename) {
-    return [NSTemporaryDirectory() stringByAppendingPathComponent:filename];
+    return [iPlayLogsDirectory() stringByAppendingPathComponent:filename];
 }
 
 static const char *iPlayAppLogFileSystemPath(void) {
@@ -3022,6 +3044,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 /* Networking */
 @property (nonatomic, assign) int listenFd;
 @property (nonatomic, assign) int clientFd;
+@property (nonatomic, assign) uint16_t ipcPort;
 @property (nonatomic, strong) dispatch_queue_t bgQueue;
 @property (nonatomic, strong) dispatch_queue_t videoQueue;
 
@@ -6764,7 +6787,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     NSString *name = [NSString stringWithFormat:@"iPlay-logs-%@.txt",
                       [self timestampStringForFilename]];
-    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
+    NSString *path = [iPlayLogsDirectory() stringByAppendingPathComponent:name];
     NSError *error = nil;
     BOOL ok = [text writeToFile:path atomically:YES
                        encoding:NSUTF8StringEncoding error:&error];
@@ -6809,21 +6832,95 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 /* ─── IPC listener ─────────────────────────────────────────── */
 
 - (BOOL)startIPCListener {
+    if (self.listenFd >= 0) {
+        close(self.listenFd);
+        self.listenFd = -1;
+    }
+    self.ipcPort = 0;
+
+    if (iPlayIsStockSideStoreBuild()) {
+        /*
+         * Do not use a filesystem AF_UNIX socket in a sandboxed SideStore
+         * build. iOS container paths can exceed sockaddr_un.sun_path and get
+         * truncated, leaving stale sockets behind. A loopback-only TCP socket
+         * has the same process-local security boundary without pathname limits.
+         */
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) {
+            ip_log("IPC loopback socket() failed errno=%d %s", errno, strerror(errno));
+            return NO;
+        }
+        int yes = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(0);
+
+        if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            ip_log("IPC loopback bind failed errno=%d %s", errno, strerror(errno));
+            close(fd);
+            return NO;
+        }
+        if (listen(fd, 4) < 0) {
+            ip_log("IPC loopback listen failed errno=%d %s", errno, strerror(errno));
+            close(fd);
+            return NO;
+        }
+
+        socklen_t addrLength = sizeof(addr);
+        if (getsockname(fd, (struct sockaddr *)&addr, &addrLength) < 0) {
+            ip_log("IPC loopback getsockname failed errno=%d %s", errno, strerror(errno));
+            close(fd);
+            return NO;
+        }
+
+        self.listenFd = fd;
+        self.ipcPort = ntohs(addr.sin_port);
+        ip_log("IPC listening on 127.0.0.1:%u (SideStore loopback)",
+               self.ipcPort);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            [self ipcAcceptLoop];
+        });
+        return YES;
+    }
+
     unlink(SOCK_PATH);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return NO;
+    size_t socketPathLength = strlen(SOCK_PATH);
     struct sockaddr_un addr = {0};
+    if (socketPathLength >= sizeof(addr.sun_path)) {
+        ip_log("IPC unix path too long: %zu >= %zu path=%s",
+               socketPathLength, sizeof(addr.sun_path), SOCK_PATH);
+        return NO;
+    }
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        ip_log("IPC unix socket() failed errno=%d %s", errno, strerror(errno));
+        return NO;
+    }
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCK_PATH, sizeof(addr.sun_path) - 1);
+    strlcpy(addr.sun_path, SOCK_PATH, sizeof(addr.sun_path));
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        ip_log("bind: %s", strerror(errno));
-        close(fd); return NO;
+        ip_log("IPC unix bind failed errno=%d %s path=%s",
+               errno, strerror(errno), SOCK_PATH);
+        close(fd);
+        return NO;
     }
     chmod(SOCK_PATH, 0777);
-    listen(fd, 1);
+    if (listen(fd, 1) < 0) {
+        ip_log("IPC unix listen failed errno=%d %s", errno, strerror(errno));
+        close(fd);
+        unlink(SOCK_PATH);
+        return NO;
+    }
     self.listenFd = fd;
-    ip_log("IPC listening on %s", SOCK_PATH);
-    dispatch_async(dispatch_get_global_queue(0, 0), ^{ [self ipcAcceptLoop]; });
+    ip_log("IPC listening on unix:%s", SOCK_PATH);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        [self ipcAcceptLoop];
+    });
     return YES;
 }
 
