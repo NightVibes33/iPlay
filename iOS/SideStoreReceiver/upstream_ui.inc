@@ -743,6 +743,32 @@
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayAutoForeground"];
     }];
+
+    NSString *automaticTargetName =
+        [defaults stringForKey:@"iPlayRemoteReceiverName"];
+    NSString *automaticTargetTitle = nil;
+    if (self.sideStoreMode == 0) {
+        automaticTargetTitle = @"Choose iPhone · This iPhone";
+    } else if (self.sideStoreMode == 2 && automaticTargetName.length) {
+        automaticTargetTitle =
+            [NSString stringWithFormat:@"Choose iPhone · %@", automaticTargetName];
+    } else {
+        automaticTargetTitle = @"Choose iPhone";
+    }
+    UIButton *automaticTarget =
+        [self upstreamButtonWithTitle:automaticTargetTitle
+                              primary:NO
+                               height:60
+                               action:^{
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            [self chooseRemoteAtoBReceiverFrom:self.vc
+                         connectAfterSelection:NO
+                              allowLocalTarget:YES];
+        }];
+    }];
+    automaticTarget.tag = 0x49504348; /* IPCH: live chooser label updates */
+    [automaticStack addArrangedSubview:automaticTarget];
+
     [root addArrangedSubview:automatic];
 
     UIStackView *displayStack = nil;
