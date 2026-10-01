@@ -67,8 +67,22 @@ jobs:
           strings "$BIN" | grep -F "Choose image"
           strings "$BIN" | grep -F "Manufacturer"
           strings "$BIN" | grep -F "2a2a2a2a"
+          strings "$BIN" | grep -F "This iPhone · A → A"
+          strings "$BIN" | grep -F "Receive · A → B"
+          strings "$BIN" | grep -F "Send · A → B"
+          strings "$BIN" | grep -F "Finding iPlay"
+          strings "$BIN" | grep -F "Select an iPhone running iPlay in Receive mode."
           test -s "$APP/ic_carplay.png"
           test -s "$APP/ic_car_home.png"
+
+          # Guard against the old fake/pause overlay returning to the source.
+          grep -F "ThreeFingerSwipeDownGestureRecognizer" iOS/SideStoreReceiver/iPlay.m
+          grep -F '#include "upstream_ui.inc"' iOS/SideStoreReceiver/iPlay.m
+          if grep -E "ControlsOverlayView|Three-finger tap to return to CarPlay|buildSetupOverlay" \
+              iOS/SideStoreReceiver/iPlay.m; then
+            echo "ERROR: obsolete fake CarPlay UI/chrome returned"
+            exit 1
+          fi
 
           # Stock SideStore build must never instruct users to install jailbreak tooling.
           if strings "$BIN" | grep -F "Sileo"; then
