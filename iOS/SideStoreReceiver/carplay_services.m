@@ -3024,6 +3024,7 @@ static const char *iplay_ipc_socket_path(void) {
 /* STATUS_* codes are forward-declared at the top of the file. */
 
 static int g_app_sock = -1;
+static dispatch_semaphore_t g_app_send_lock = NULL;
 static volatile bool g_app_video_enabled = true;
 
 void iPlayCarPlayServiceSetAppSocket(int fd) {
@@ -3080,7 +3081,6 @@ static uint32_t build_video_timing_payload(uint8_t out[14]) {
     out[13] = g_timing_offset_valid ? 1 : 0;
     return 14;
 }
-static dispatch_semaphore_t g_app_send_lock = NULL;
 static dispatch_semaphore_t g_video_config_lock = NULL;
 static uint8_t *g_latest_video_config = NULL;
 static uint32_t g_latest_video_config_length = 0;
