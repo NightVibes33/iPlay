@@ -49,6 +49,9 @@ jobs:
           strings "$BIN" | grep -F "Connected to iPlay app via in-process socketpair fd="
           grep -F 'socketpair(AF_UNIX, SOCK_STREAM, 0, pair)' iOS/SideStoreReceiver/iPlay.m
           grep -F 'iPlayCarPlayServiceSetAppSocket(pair[1])' iOS/SideStoreReceiver/iPlay.m
+          # A retry must clear the previous receiver endpoint before allocating
+          # the new transport, not only after allocation has already failed.
+          grep -F 'iPlayCarPlayServiceSetAppSocket(-1);' iOS/SideStoreReceiver/iPlay.m
 
           # Real fallback when socketpair cannot be allocated.
           strings "$BIN" | grep -F "IPC fallback listening on 127.0.0.1:"
