@@ -4228,15 +4228,37 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                 /* Stock / SideStore build: no hotspot, jailbreak tooling, or saved-car
                  * setup is required before choosing a mode. */
                 self.headlineLabel.text = @"Ready when you are";
-                self.subtitleLabel.text = @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.";
                 [self.primaryButton setTitle:@"Connect phone" forState:UIControlStateNormal];
-                [self.secondaryButton setTitle:@"Connection mode" forState:UIControlStateNormal];
+                [self.secondaryButton setTitle:@"Choose iPhone" forState:UIControlStateNormal];
                 [self.tertiaryButton setTitle:@"Settings" forState:UIControlStateNormal];
                 [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
+
+                if (self.sideStoreMode == 2) {
+                    NSDictionary *savedReceiver = [self savedRemoteAtoBReceiver];
+                    NSString *receiverName = savedReceiver[@"name"];
+                    NSString *receiverHost = savedReceiver[@"host"];
+                    self.subtitleLabel.text =
+                        @"Send this iPhone’s CarPlay session to another iPhone running iPlay.";
+                    self.carHintLabel.text = receiverHost.length
+                        ? [NSString stringWithFormat:@"Selected: %@ · %@",
+                                                     receiverName.length ? receiverName : @"iPlay",
+                                                     receiverHost]
+                        : @"Choose the destination iPhone before connecting.";
+                } else if (self.sideStoreMode == 1) {
+                    self.subtitleLabel.text =
+                        @"Use this iPhone as the CarPlay display for another iPhone.";
+                    self.carHintLabel.text =
+                        @"Receive A → B advertises this iPhone as the iPlay CarPlay receiver.";
+                } else {
+                    self.subtitleLabel.text =
+                        @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.";
+                    self.carHintLabel.text =
+                        @"A → A uses LocalDevVPN + trusted Remote Pairing.";
+                }
+
                 self.secondaryButton.hidden = NO;
                 self.tertiaryButton.hidden = NO;
                 self.receiverButton.hidden = NO;
-                self.carHintLabel.text = @"A → A uses LocalDevVPN + trusted Remote Pairing.";
                 self.carHintLabel.hidden = NO;
                 break;
             }
