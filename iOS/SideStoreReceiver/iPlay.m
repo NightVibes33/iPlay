@@ -3046,6 +3046,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 /* Networking */
 @property (nonatomic, assign) int listenFd;
 @property (nonatomic, assign) int clientFd;
+@property (nonatomic, assign) int ipcServiceFd;
 @property (nonatomic, assign) uint16_t ipcPort;
 @property (nonatomic, strong) dispatch_queue_t bgQueue;
 @property (nonatomic, strong) dispatch_queue_t videoQueue;
@@ -3201,6 +3202,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
     self.state = StateIdle;
     self.listenFd = -1;
     self.clientFd = -1;
+    self.ipcServiceFd = -1;
     self.bgTask = UIBackgroundTaskInvalid;
     self.tcpdumpPid = 0;
     self.tcpdumpMissingPromptShown = NO;
@@ -5662,7 +5664,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }
 
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
-    char appPortBuf[16];
+    char appFdBuf[16];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
     char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     char safeLeftBuf[16], safeTopBuf[16], safeRightBuf[16], safeBottomBuf[16],
@@ -5682,7 +5684,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             ? 2 * 1024 * 1024
             : (display.framesPerSecond <= 30 ? 1024 * 1024 : 512 * 1024);
     snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
-    snprintf(appPortBuf, sizeof(appPortBuf), "%u", self.ipcPort);
+    snprintf(appFdBuf, sizeof(appFdBuf), "%d", self.ipcServiceFd);
     snprintf(widthBuf, sizeof(widthBuf), "%u", displayWidth);
     snprintf(heightBuf, sizeof(heightBuf), "%u", displayHeight);
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
@@ -5826,7 +5828,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             NSString *manufacturerCopy = [manufacturer copy];
             NSString *modelCopy = [modelName copy];
             NSString *oemLabelCopy = [oemLabel copy];
-            uint16_t appPortCopy = self.ipcPort;
+            int appFdCopy = self.ipcServiceFd;
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
@@ -5839,7 +5841,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
-                    char appPortArg[16];
+                    char appFdArg[16];
                     char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     char safeLeftArg[16], safeTopArg[16], safeRightArg[16],
@@ -5848,7 +5850,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
                     snprintf(oemLabelArg, sizeof(oemLabelArg), "%s", oemLabelCopy.UTF8String);
-                    snprintf(appPortArg, sizeof(appPortArg), "%u", appPortCopy);
+                    snprintf(appFdArg, sizeof(appFdArg), "%d", appFdCopy);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
@@ -5882,7 +5884,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
-                        (char *)"--app-port", appPortArg,
+                        (char *)"--app-fd", appFdArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -5905,7 +5907,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
-                        (char *)"--app-port", appPortArg,
+                        (char *)"--app-fd", appFdArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -6023,6 +6025,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self transitionTo:StateStopping];
     dispatch_async(self.bgQueue, ^{
         if (self.clientFd >= 0) { close(self.clientFd); self.clientFd = -1; }
+        if (self.ipcServiceFd >= 0) { close(self.ipcServiceFd); self.ipcServiceFd = -1; }
         if (self.listenFd >= 0) { close(self.listenFd); self.listenFd = -1; }
         self.ipcPort = 0;
         if (!iPlayIsStockSideStoreBuild()) unlink(SOCK_PATH);
@@ -6856,49 +6859,52 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     if (iPlayIsStockSideStoreBuild()) {
         /*
-         * Do not use a filesystem AF_UNIX socket in a sandboxed SideStore
-         * build. iOS container paths can exceed sockaddr_un.sun_path and get
-         * truncated, leaving stale sockets behind. A loopback-only TCP socket
-         * has the same process-local security boundary without pathname limits.
+         * The SideStore receiver runs in-process. Use a full-duplex socketpair
+         * instead of bind/listen/connect on loopback: no Local Network policy,
+         * no ephemeral-port race, and no stale filesystem socket.
          */
-        int fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) {
-            ip_log("IPC loopback socket() failed errno=%d %s", errno, strerror(errno));
-            return NO;
+        if (self.clientFd >= 0) {
+            close(self.clientFd);
+            self.clientFd = -1;
         }
-        int yes = 1;
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = htons(0);
-
-        if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-            ip_log("IPC loopback bind failed errno=%d %s", errno, strerror(errno));
-            close(fd);
-            return NO;
-        }
-        if (listen(fd, 4) < 0) {
-            ip_log("IPC loopback listen failed errno=%d %s", errno, strerror(errno));
-            close(fd);
-            return NO;
+        if (self.ipcServiceFd >= 0) {
+            close(self.ipcServiceFd);
+            self.ipcServiceFd = -1;
         }
 
-        socklen_t addrLength = sizeof(addr);
-        if (getsockname(fd, (struct sockaddr *)&addr, &addrLength) < 0) {
-            ip_log("IPC loopback getsockname failed errno=%d %s", errno, strerror(errno));
-            close(fd);
+        int pair[2] = { -1, -1 };
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
+            ip_log("IPC socketpair failed errno=%d %s", errno, strerror(errno));
             return NO;
         }
+        int noSigPipe = 1;
+        setsockopt(pair[0], SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
+        setsockopt(pair[1], SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
 
-        self.listenFd = fd;
-        self.ipcPort = ntohs(addr.sin_port);
-        ip_log("IPC listening on 127.0.0.1:%u (SideStore loopback)",
-               self.ipcPort);
+        self.clientFd = pair[0];
+        self.ipcServiceFd = pair[1];
+        self.listenFd = -1;
+        self.ipcPort = 0;
+
+        __sync_add_and_fetch(&g_touch_epoch, 1);
+        g_touch_fd = pair[0];
+        ip_log("IPC ready via in-process socketpair appFd=%d serviceFd=%d",
+               pair[0], pair[1]);
+
+        int appFd = pair[0];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            [self ipcAcceptLoop];
+            [self ipcHandleConnection:appFd];
+            if (self.clientFd == appFd) self.clientFd = -1;
+            g_touch_fd = -1;
+            __sync_add_and_fetch(&g_touch_epoch, 1);
+            close(appFd);
+            ip_log("in-process IPC disconnected");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self endAWDLSuppression];
+            });
+            if (self.state == StateActive || self.state == StateAwaitingPhone) {
+                [self stopFlow];
+            }
         });
         return YES;
     }
