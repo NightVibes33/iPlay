@@ -486,7 +486,9 @@
         self.sideStoreMode = 2;
         [[NSUserDefaults standardUserDefaults] setInteger:2 forKey:@"iPlayLastMode"];
         refreshModeButtons();
-        [self chooseRemoteAtoBReceiverFrom:weakPage connectAfterSelection:NO];
+        [self chooseRemoteAtoBReceiverFrom:weakPage
+                     connectAfterSelection:NO
+                          allowLocalTarget:NO];
     }] forControlEvents:UIControlEventTouchUpInside];
 
     [chooseStack addArrangedSubview:localModeButton];
