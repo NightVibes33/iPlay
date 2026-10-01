@@ -3851,6 +3851,27 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [locationStack addArrangedSubview:locationRow];
     [root addArrangedSubview:locationCard];
 
+    [root addArrangedSubview:categoryLabel(@"Diagnostics")];
+    UIStackView *diagnosticStack = nil;
+    UIView *diagnosticCard =
+        [self upstreamSettingsCardWithTitle:@"Receiver logs" stack:&diagnosticStack];
+    diagnosticCard.backgroundColor = PANEL;
+    diagnosticCard.layer.borderColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+    [diagnosticStack addArrangedSubview:[self upstreamLabel:
+        @"Export the live iPlay application and receiver log as a local text report."
+        size:15 color:SECONDARY bold:NO]];
+    UIButton *exportLogs = [UIButton buttonWithType:UIButtonTypeCustom];
+    [exportLogs setTitle:@"Save diagnostic report" forState:UIControlStateNormal];
+    [self styleUpstreamButton:exportLogs primary:NO];
+    [exportLogs.heightAnchor constraintEqualToConstant:56].active = YES;
+    [exportLogs addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [self exportDiagnostics];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [diagnosticStack addArrangedSubview:exportLogs];
+    [root addArrangedSubview:diagnosticCard];
+
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
@@ -5589,7 +5610,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 - (void)showAbout {
     if (iPlayIsStockSideStoreBuild()) {
         NSString *msg = [NSString stringWithFormat:
-            @"Version %s\nby %s\n\nSideStore build\nA → A: LocalDevVPN + Developer Mode pairing\nA → B: wireless receiver/source modes\n\nDuring CarPlay, tap with three fingers to show Info and Stop.",
+            @"Version %s\nby %s\n\nSideStore build\nA → A: LocalDevVPN + Developer Mode pairing\nA → B: wireless receiver/source modes\n\nDuring CarPlay, swipe down with three fingers to open CarPlay settings.",
             APP_VERSION, APP_AUTHOR];
         UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
             message:msg preferredStyle:UIAlertControllerStyleAlert];
@@ -5604,7 +5625,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         return;
     }
 
-    NSString *msg = [NSString stringWithFormat:@"Version %s\nby %s\n\nDuring CarPlay, tap with three fingers to show Info and Stop.\nDiagnostics: %@",
+    NSString *msg = [NSString stringWithFormat:@"Version %s\nby %s\n\nDuring CarPlay, swipe down with three fingers to open CarPlay settings.\nDiagnostics: %@",
                      APP_VERSION, APP_AUTHOR,
                      self.diagnosticsEnabled ? @"On" : @"Off"];
     UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
