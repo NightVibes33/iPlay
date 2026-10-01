@@ -6060,8 +6060,16 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self.apPollTimer invalidate]; self.apPollTimer = nil;
     [self transitionTo:StateStopping];
     dispatch_async(self.bgQueue, ^{
-        if (self.clientFd >= 0) { close(self.clientFd); self.clientFd = -1; }
-        if (self.listenFd >= 0) { close(self.listenFd); self.listenFd = -1; }
+        if (self.clientFd >= 0) {
+            shutdown(self.clientFd, SHUT_RDWR);
+            close(self.clientFd);
+            self.clientFd = -1;
+        }
+        if (self.listenFd >= 0) {
+            shutdown(self.listenFd, SHUT_RDWR);
+            close(self.listenFd);
+            self.listenFd = -1;
+        }
         if (iPlayIsStockSideStoreBuild()) {
             /*
              * Release the receiver end immediately instead of waiting for the
