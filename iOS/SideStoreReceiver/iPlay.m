@@ -51,7 +51,6 @@ extern BOOL iPlayStartLocalCarPlaySession(NSString *displayName, NSInteger port)
 extern BOOL iPlayStartRemoteCarPlaySession(NSString *displayName, NSString *address, NSInteger port);
 extern NSArray<NSDictionary *> *iPlayDiscoverRemoteCarPlayReceivers(NSTimeInterval timeout);
 extern NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout);
-extern NSArray<NSDictionary *> *iPlayDiscoverRemoteCarPlayReceivers(NSTimeInterval timeout);
 extern void iPlayStopRequestedCarPlaySession(void);
 extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
 extern volatile int g_iPlayAirPlayServerReady;
@@ -2743,8 +2742,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)startRemoteAtoB;
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection;
-- (void)connectRemoteAtoBReceiver:(NSDictionary *)receiver;
-- (void)promptForManualRemoteAtoB;
 
 /* Lifecycle */
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
@@ -4372,71 +4369,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self.vc presentViewController:sheet animated:YES completion:nil];
 }
 
-- (void)connectRemoteAtoBReceiver:(NSDictionary *)receiver {
-    NSString *host = [receiver[@"host"] isKindOfClass:[NSString class]]
-        ? receiver[@"host"] : @"";
-    NSInteger port = [receiver[@"port"] respondsToSelector:@selector(integerValue)]
-        ? [receiver[@"port"] integerValue] : 7000;
-    NSString *name = [receiver[@"name"] isKindOfClass:[NSString class]]
-        ? receiver[@"name"] : @"iPlay";
-    if (host.length == 0) {
-        [self promptForManualRemoteAtoB];
-        return;
-    }
-    if (port <= 0 || port > UINT16_MAX) port = 7000;
-
-    self.sideStoreMode = 2;
-    self.headlineLabel.text = @"Starting CarPlay";
-    self.subtitleLabel.text =
-        [NSString stringWithFormat:@"Connecting to %@", name.length ? name : host];
-
-    dispatch_async(self.bgQueue, ^{
-        BOOL ok = iPlayStartRemoteCarPlaySession(@"iPlay", host, port);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (ok) {
-                self.headlineLabel.text = @"Starting CarPlay";
-                self.subtitleLabel.text =
-                    [NSString stringWithFormat:@"Connecting to %@ · %@:%ld",
-                                               name.length ? name : @"iPlay",
-                                               host, (long)port];
-            } else {
-                self.headlineLabel.text = @"Could not start CarPlay";
-                self.subtitleLabel.text =
-                    [NSString stringWithFormat:@"CarKit session request to %@:%ld was unavailable.",
-                                               host, (long)port];
-            }
-        });
-    });
-}
-
-- (void)promptForManualRemoteAtoB {
-    UIAlertController *prompt =
-        [UIAlertController alertControllerWithTitle:@"Receiver Not Found"
-            message:@"Enter the other iPhone’s IPv6 address or local hostname."
-            preferredStyle:UIAlertControllerStyleAlert];
-    [prompt addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = @"fe80::…%en0 or receiver.local";
-        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        field.autocorrectionType = UITextAutocorrectionTypeNo;
-    }];
-    [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel"
-        style:UIAlertActionStyleCancel handler:nil]];
-    [prompt addAction:[UIAlertAction actionWithTitle:@"Connect"
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-            NSString *manualHost =
-                [prompt.textFields.firstObject.text
-                    stringByTrimmingCharactersInSet:
-                        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-            if (manualHost.length == 0) return;
-            [self connectRemoteAtoBReceiver:@{
-                @"name": manualHost,
-                @"host": manualHost,
-                @"port": @7000
-            }];
-        }]];
-    [[self topPresenter] presentViewController:prompt animated:YES completion:nil];
-}
-
 - (NSDictionary *)savedRemoteAtoBReceiver {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *host = [defaults stringForKey:@"iPlayRemoteReceiverHost"];
@@ -4636,7 +4568,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 - (void)secondaryTapped {
     if (self.state == StateIdle) {
         if (iPlayIsStockSideStoreBuild()) {
-            [self chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:NO];
+            [self showSideStoreModePicker];
         } else {
             [self showWifiSetup];
         }
