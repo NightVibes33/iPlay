@@ -4555,8 +4555,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     switch (self.state) {
         case StateIdle:
             if (iPlayIsStockSideStoreBuild()) {
-                self.sideStoreMode = 0;
-                [self attemptStart];
+                if (self.sideStoreMode == 2) [self startRemoteAtoB];
+                else [self attemptStart];
             } else if ([self.cars apReady]) [self attemptStart];
             else [self showWifiSetup];
             break;
