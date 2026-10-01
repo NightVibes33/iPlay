@@ -415,7 +415,6 @@
     [self.upstreamBrandIcon.widthAnchor constraintEqualToConstant:96].active = YES;
     [self.upstreamBrandIcon.heightAnchor constraintEqualToConstant:96].active = YES;
     [branding addArrangedSubview:self.upstreamBrandIcon];
-    [right addArrangedSubview:branding];
 
     self.receiverButton = [self upstreamButtonWithTitle:@"Receive from another iPhone"
                                                primary:NO
@@ -455,8 +454,6 @@
         [hero.widthAnchor constraintEqualToAnchor:branding.widthAnchor multiplier:1.6].active = YES;
         [root addArrangedSubview:top];
 
-        [right removeArrangedSubview:branding];
-        [branding removeFromSuperview];
         UIStackView *bottom = [[UIStackView alloc] init];
         bottom.axis = UILayoutConstraintAxisHorizontal;
         bottom.alignment = UIStackViewAlignmentTop;
@@ -467,6 +464,7 @@
             constraintEqualToAnchor:right.widthAnchor multiplier:1.6].active = YES;
         [root addArrangedSubview:bottom];
     } else {
+        [right insertArrangedSubview:branding atIndex:0];
         [root addArrangedSubview:hero];
         [root addArrangedSubview:self.upstreamWirelessCard];
         [root addArrangedSubview:right];
