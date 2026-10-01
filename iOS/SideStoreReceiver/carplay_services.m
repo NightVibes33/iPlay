@@ -3053,6 +3053,30 @@ void iPlayCarPlayServiceSetAppSocket(int fd) {
     if (g_app_send_lock)
         dispatch_semaphore_signal(g_app_send_lock);
 }
+
+void iPlayCarPlayServiceSetAppPort(uint16_t port) {
+    if (port == 0) return;
+
+    if (g_app_send_lock)
+        dispatch_semaphore_wait(g_app_send_lock, DISPATCH_TIME_FOREVER);
+
+    if (g_app_sock >= 0) {
+        shutdown(g_app_sock, SHUT_RDWR);
+        close(g_app_sock);
+        g_app_sock = -1;
+    }
+    if (g_app_fd >= 0) {
+        shutdown(g_app_fd, SHUT_RDWR);
+        close(g_app_fd);
+        g_app_fd = -1;
+    }
+
+    g_app_port = port;
+    printf("[SCREEN] Installed fresh loopback app IPC port=%u\n", port);
+
+    if (g_app_send_lock)
+        dispatch_semaphore_signal(g_app_send_lock);
+}
 static volatile uint32_t g_screen_latency_ms = 75;
 
 /* AirPlayScreenHeader.smallParam[1] bit 1 (kAirPlayScreenFlag_RespectTimestamps).
