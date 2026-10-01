@@ -270,6 +270,14 @@ cp "$ROOT/common/src/main/res/drawable/ic_carplay.png" "$APP/ic_carplay.png"
 cp "$ROOT/common/src/main/res/raw/ic_car_home.png" "$APP/ic_car_home.png"
 chmod +x "$APP/iPlay"
 
+# Packaging invariants for modern full-screen presentation and the installed
+# icon. Fail CI rather than shipping another letterboxed/iconless IPA.
+test -d "$APP/LaunchScreen.storyboardc"
+test -s "$APP/AppIcon60x60@2x.png"
+test -s "$APP/AppIcon60x60@3x.png"
+test "$(/usr/libexec/PlistBuddy -c 'Print :UILaunchStoryboardName' "$APP/Info.plist")" = "LaunchScreen"
+/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0' "$APP/Info.plist" | grep -qx 'AppIcon60x60'
+
 if codesign -dv "$OUT/Payload/iPlay.app/iPlay" >/dev/null 2>&1; then
   echo "ERROR: main binary unexpectedly contains a code signature" >&2
   exit 1
