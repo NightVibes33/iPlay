@@ -4192,6 +4192,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [root addArrangedSubview:automatic];
     [root setCustomSpacing:36 afterView:automatic];
 
+    UILabel *audioCategory = categoryLabel(@"Audio");
+    [root addArrangedSubview:audioCategory];
+    [root setCustomSpacing:12 afterView:audioCategory];
+    [root addArrangedSubview:audioCard];
+    [root setCustomSpacing:36 afterView:audioCard];
+
     UILabel *identityCategory = categoryLabel(@"Identity & appearance");
     [root addArrangedSubview:identityCategory];
     [root setCustomSpacing:12 afterView:identityCategory];
@@ -4209,12 +4215,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [root setCustomSpacing:12 afterView:windowCategory];
     [root addArrangedSubview:windowSection];
     [root setCustomSpacing:40 afterView:windowSection];
-
-    UILabel *audioCategory = categoryLabel(@"Audio");
-    [root addArrangedSubview:audioCategory];
-    [root setCustomSpacing:12 afterView:audioCategory];
-    [root addArrangedSubview:audioCard];
-    [root setCustomSpacing:40 afterView:audioCard];
 
     UILabel *diagnosticsCategory = categoryLabel(@"Diagnostics");
     [root addArrangedSubview:diagnosticsCategory];
