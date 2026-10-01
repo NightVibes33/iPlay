@@ -221,7 +221,9 @@ static void local_log(const char *fmt, ...) {
     fprintf(stderr, "[iPlay:LocalDevVPN] %s\n", rendered);
 
     pthread_mutex_lock(&g_local_log_lock);
-    FILE *file = fopen("/tmp/iplay-localdevvpn.log", "a");
+    NSString *logPath =
+        [NSTemporaryDirectory() stringByAppendingPathComponent:@"iplay-localdevvpn.log"];
+    FILE *file = fopen(logPath.fileSystemRepresentation, "a");
     if (file) {
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
