@@ -68,6 +68,20 @@ extern volatile int g_iPlayAirPlayServerReady;
 #define DIAGNOSTICS_ENABLED_KEY @"diagnosticsEnabled"
 static FILE *g_logfile = NULL;
 
+static NSString *iPlaySandboxLogPath(NSString *filename) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:filename];
+}
+
+static const char *iPlayAppLogFileSystemPath(void) {
+    static char path[1024] = {0};
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *value = iPlaySandboxLogPath(@"iplay-app.log");
+        strlcpy(path, value.fileSystemRepresentation, sizeof(path));
+    });
+    return path;
+}
+
 static uint64_t monotonic_nanos_now(void) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -93,11 +107,9 @@ static void ip_log(const char *fmt, ...) {
 }
 
 static void ip_log_open(void) {
-    mkdir("/var/mobile/Library/Showcase", 0755);
-    mkdir(LOG_DIR, 0755);
-    g_logfile = fopen(APP_LOG, "a");
+    g_logfile = fopen(iPlayAppLogFileSystemPath(), "a");
     if (g_logfile) {
-        fprintf(g_logfile, "\n══════════════ Showcase launch ══════════════\n");
+        fprintf(g_logfile, "\n══════════════ iPlay launch ══════════════\n");
         fflush(g_logfile);
     }
 }
@@ -4716,7 +4728,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 #include "upstream_ui.inc"
 
 - (NSString *)debugOverlayTailText {
-    NSData *data = [NSData dataWithContentsOfFile:@APP_LOG];
+    NSData *data = [NSData dataWithContentsOfFile:iPlaySandboxLogPath(@"iplay-app.log")];
     if (data.length == 0) return @"Waiting for iPlay logs…";
 
     NSUInteger keep = MIN((NSUInteger)12000, data.length);
@@ -6721,9 +6733,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [text appendFormat:@"AirPlay receiver ready: %d\n", g_iPlayAirPlayServerReady ? 1 : 0];
 
     NSArray<NSDictionary *> *sources = @[
-        @{@"title": @"APP LOG", @"path": @APP_LOG},
-        @{@"title": @"CARPLAY SERVICE LOG", @"path": @"/tmp/iplay-service.log"},
-        @{@"title": @"LOCALDEVVPN / RSD LOG", @"path": @"/tmp/iplay-localdevvpn.log"},
+        @{@"title": @"APP LOG", @"path": iPlaySandboxLogPath(@"iplay-app.log")},
+        @{@"title": @"CARPLAY SERVICE LOG", @"path": iPlaySandboxLogPath(@"iplay-service.log")},
+        @{@"title": @"LOCALDEVVPN / RSD LOG", @"path": iPlaySandboxLogPath(@"iplay-localdevvpn.log")},
     ];
 
     for (NSDictionary *source in sources) {
