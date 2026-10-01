@@ -6206,8 +6206,25 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     NSString *message = reason.length ? reason : @"Unknown CarPlay startup failure";
     self.lastStartupFailure = message;
     ip_log("FAIL: %s", message.UTF8String);
+
+    /* Immediate snapshot captures the exact failure-state fds and errno trail. */
     [self writeLastStartupFailureReport:message];
     [self stopFlow];
+
+    /*
+     * Refresh once after teardown so the Files-visible report also contains
+     * final receiver/LocalDevVPN lines flushed while stopFlow was closing the
+     * failed session. Skip it if the user has already retried.
+     */
+    NSString *failureToken = [message copy];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                 (int64_t)(750 * NSEC_PER_MSEC)),
+                   self.bgQueue, ^{
+        if ([self.lastStartupFailure isEqualToString:failureToken]) {
+            [self writeLastStartupFailureReport:failureToken];
+            ip_log("failure report refreshed after teardown");
+        }
+    });
 }
 
 - (void)openHotspotSettings {
