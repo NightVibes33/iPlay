@@ -523,11 +523,11 @@
                                             bold:NO]];
     NSString *selectedReceiver =
         [[NSUserDefaults standardUserDefaults] stringForKey:@"iPlayRemoteReceiverName"];
-    NSString *phoneTitle = @"Choose iPhone";
-    if (self.sideStoreMode == 0) {
-        phoneTitle = @"Choose iPhone · This iPhone";
-    } else if (self.sideStoreMode == 2 && selectedReceiver.length) {
-        phoneTitle = [NSString stringWithFormat:@"Choose iPhone · %@", selectedReceiver];
+    NSString *phoneTitle = @"Connect this iPhone to another iPlay";
+    if (self.sideStoreMode == 2) {
+        phoneTitle = selectedReceiver.length
+            ? [NSString stringWithFormat:@"Choose send target · %@", selectedReceiver]
+            : @"Choose send target";
     }
     UIButton *choosePhoneButton =
         [self upstreamButtonWithTitle:phoneTitle primary:NO action:^{
