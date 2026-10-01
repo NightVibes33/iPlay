@@ -626,8 +626,11 @@
                                             bold:NO]];
     [connectStack addArrangedSubview:[self upstreamButtonWithTitle:@"Connect phone"
                                                            primary:YES action:^{
-        [weakPage dismissViewControllerAnimated:YES completion:^{
-            if (self.sideStoreMode == 2) [self startRemoteAtoB];
+        NSInteger mode = self.sideStoreMode;
+        [[NSUserDefaults standardUserDefaults] setInteger:mode forKey:@"iPlayLastMode"];
+        [self.vc dismissViewControllerAnimated:YES completion:^{
+            self.sideStoreMode = mode;
+            if (mode == 2) [self startRemoteAtoB];
             else [self attemptStart];
         }];
     }]];
@@ -645,7 +648,9 @@
     [cableStack addArrangedSubview:[self upstreamButtonWithTitle:@"Use local wired iAP2"
                                                          primary:NO action:^{
         self.sideStoreMode = 0;
-        [weakPage dismissViewControllerAnimated:YES completion:^{
+        [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
+        [self.vc dismissViewControllerAnimated:YES completion:^{
+            self.sideStoreMode = 0;
             [self attemptStart];
         }];
     }]];
