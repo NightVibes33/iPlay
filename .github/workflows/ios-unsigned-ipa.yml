@@ -85,6 +85,8 @@ jobs:
           grep -F '[self showUpstreamSettings];' iOS/SideStoreReceiver/iPlay.m
           grep -F -- '- (void)showUpstreamSettingsReal {' \
             iOS/SideStoreReceiver/upstream_ui.inc
+          grep -F 'chooseRemoteAtoBReceiverFrom:weakSettings' \
+            iOS/SideStoreReceiver/upstream_ui.inc
           grep -F 'setDebugOverlayEnabled:' iOS/SideStoreReceiver/iPlay.m
           grep -F 'debugOverlayTailText' iOS/SideStoreReceiver/iPlay.m
           grep -F 'sizeof(argsTrusted) / sizeof(argsTrusted[0])' iOS/SideStoreReceiver/iPlay.m
