@@ -132,7 +132,38 @@ static void ip_log(const char *fmt, ...) {
     fflush(g_logfile);
 }
 
+static void iPlayEnsureFilesSurface(void) {
+    NSString *documents = iPlayDocumentsDirectory();
+    NSString *logs = iPlayLogsDirectory();
+
+    NSString *rootReadme = [documents stringByAppendingPathComponent:@"README.txt"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:rootReadme]) {
+        NSString *body =
+            @"iPlay Files\n"
+             "===========\n\n"
+             "Runtime logs are stored in the “iPlay Logs” folder.\n"
+             "If CarPlay startup fails, open iPlay Logs/last-start-failure.txt first.\n";
+        [body writeToFile:rootReadme atomically:YES
+                 encoding:NSUTF8StringEncoding error:nil];
+    }
+
+    NSString *logsReadme = [logs stringByAppendingPathComponent:@"README.txt"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:logsReadme]) {
+        NSString *body =
+            @"iPlay runtime logs\n"
+             "==================\n\n"
+             "iplay-app.log — app state, A→A setup, IPC, and failures\n"
+             "iplay-service.log — timestamped CarPlay receiver/service log\n"
+             "iplay-service-stdio.log — raw receiver stdout/stderr\n"
+             "iplay-localdevvpn.log — LocalDevVPN / Remote Pairing / RSD log\n"
+             "last-start-failure.txt — automatic combined report for the latest startup failure\n";
+        [body writeToFile:logsReadme atomically:YES
+                 encoding:NSUTF8StringEncoding error:nil];
+    }
+}
+
 static void ip_log_open(void) {
+    iPlayEnsureFilesSurface();
     g_logfile = fopen(iPlayAppLogFileSystemPath(), "a");
     if (g_logfile) {
         fprintf(g_logfile, "\n══════════════ iPlay launch ══════════════\n");
