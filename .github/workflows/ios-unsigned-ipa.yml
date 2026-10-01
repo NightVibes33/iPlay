@@ -83,13 +83,16 @@ jobs:
           # Guard against the old fake/pause overlay returning to the source.
           grep -F "ThreeFingerSwipeDownGestureRecognizer" iOS/SideStoreReceiver/iPlay.m
           grep -F '#include "upstream_ui.inc"' iOS/SideStoreReceiver/iPlay.m
-          grep -F 'if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];' \
+          grep -F 'if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F '[self showUpstreamSettings];' iOS/SideStoreReceiver/iPlay.m
-          grep -F -- '- (void)showUpstreamSettingsReal {' \
-            iOS/SideStoreReceiver/upstream_ui.inc
-          grep -F 'chooseRemoteAtoBReceiverFrom:weakSettings' \
-            iOS/SideStoreReceiver/upstream_ui.inc
+          grep -F 'chooseRemoteAtoBReceiverFrom:settings' \
+            iOS/SideStoreReceiver/iPlay.m
+          if grep -R -E 'showUpstreamSettingsReal|upstreamAddChoiceTo|upstreamAddToggleTo' \
+              iOS/SideStoreReceiver/iPlay.m iOS/SideStoreReceiver/upstream_ui.inc; then
+            echo "ERROR: duplicate idle settings surface/helpers returned"
+            exit 1
+          fi
           grep -F 'Choose iPhone · This iPhone' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'setDebugOverlayEnabled:' iOS/SideStoreReceiver/iPlay.m
@@ -99,7 +102,8 @@ jobs:
           # Keep first-launch control defaults aligned with upstream persistence.
           grep -F 'requestedFPS = 30;' iOS/SideStoreReceiver/iPlay.m
           grep -F 'referencePhysicalMm = 300;' iOS/SideStoreReceiver/iPlay.m
-          grep -F 'defaultValue:30' iOS/SideStoreReceiver/upstream_ui.inc
+          grep -F 'if (fpsValue < 30 || fpsValue > 60) fpsValue = 30;' \
+            iOS/SideStoreReceiver/iPlay.m
           grep -F 'static uint16_t g_display_fps = 30;' iOS/SideStoreReceiver/carplay_services.m
           if grep -A2 -F 'objectForKey:@"iPlayAudioFocus"] == nil' iOS/SideStoreReceiver/iPlay.m | grep -F '? YES'; then
             echo "ERROR: Audio Focus default drifted from upstream"
