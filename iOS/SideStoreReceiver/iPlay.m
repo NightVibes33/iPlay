@@ -3391,13 +3391,32 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     modeSelector.selectedSegmentIndex =
         self.sideStoreMode == 2 ? 2 : (self.sideStoreMode == 1 ? 1 : 0);
     modeSelector.selectedSegmentTintColor = ACCENT;
+
+    NSString *savedSendName = [settingsDefaults stringForKey:@"iPlayRemoteReceiverName"];
+    UIButton *sendTargetButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [sendTargetButton setTitle:(savedSendName.length
+        ? [NSString stringWithFormat:@"Choose send target · %@", savedSendName]
+        : @"Choose send target")
+                      forState:UIControlStateNormal];
+    [self styleUpstreamButton:sendTargetButton primary:NO];
+    [sendTargetButton.heightAnchor constraintEqualToConstant:56].active = YES;
+    sendTargetButton.hidden = (self.sideStoreMode != 2);
+    [sendTargetButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [self chooseRemoteAtoBReceiverFrom:settings
+                     connectAfterSelection:NO
+                          allowLocalTarget:NO];
+    }] forControlEvents:UIControlEventTouchUpInside];
+
     __weak UISegmentedControl *weakModeSelector = modeSelector;
+    __weak UIButton *weakSendTargetButton = sendTargetButton;
     [modeSelector addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         NSInteger mode = weakModeSelector.selectedSegmentIndex;
         if (mode < 0 || mode > 2) mode = 0;
         self.sideStoreMode = mode;
         [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
+        weakSendTargetButton.hidden = (mode != 2);
         if (mode == 2 && ![settingsDefaults stringForKey:@"iPlayRemoteReceiverHost"].length) {
             [self chooseRemoteAtoBReceiverFrom:settings
                          connectAfterSelection:NO
@@ -3405,6 +3424,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         }
     }] forControlEvents:UIControlEventValueChanged];
     [connectionStack addArrangedSubview:modeSelector];
+    [connectionStack addArrangedSubview:sendTargetButton];
     [root addArrangedSubview:connection];
 
     UIStackView *autoStack = nil;
