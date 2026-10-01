@@ -246,11 +246,29 @@ echo "[4/6] Link iPlay + receiver + LocalDevVPN core into one SideStore executab
   -lc++ -Wl,-undefined,dynamic_lookup
 
 echo "[5/6] Assemble unsigned app"
-cp "$SRC/Info.plist" "$OUT/Payload/iPlay.app/Info.plist"
+APP="$OUT/Payload/iPlay.app"
+cp "$SRC/Info.plist" "$APP/Info.plist"
+
+# A real launch storyboard opts modern iPhones out of legacy 3:2 compatibility
+# letterboxing before UIKit lays out the upstream surface.
+xcrun ibtool --compile "$APP/LaunchScreen.storyboardc" "$SRC/LaunchScreen.storyboard"
+
+# Use the repository's original iPlay artwork as the installed app icon.
+# Generate the concrete iPhone/iPad icon sizes expected by the legacy
+# CFBundleIconFiles metadata so sideloaded builds do not show a blank icon.
+ICON_SRC="$ROOT/site/assets/icon.png"
+test -s "$ICON_SRC"
+sips -z 60 60   "$ICON_SRC" --out "$APP/AppIcon60x60.png" >/dev/null
+sips -z 120 120 "$ICON_SRC" --out "$APP/AppIcon60x60@2x.png" >/dev/null
+sips -z 180 180 "$ICON_SRC" --out "$APP/AppIcon60x60@3x.png" >/dev/null
+sips -z 76 76   "$ICON_SRC" --out "$APP/AppIcon76x76.png" >/dev/null
+sips -z 152 152 "$ICON_SRC" --out "$APP/AppIcon76x76@2x.png" >/dev/null
+sips -z 167 167 "$ICON_SRC" --out "$APP/AppIcon83.5x83.5@2x.png" >/dev/null
+
 # Use the exact upstream DiPlay CarPlay artwork in the UIKit port.
-cp "$ROOT/common/src/main/res/drawable/ic_carplay.png" "$OUT/Payload/iPlay.app/ic_carplay.png"
-cp "$ROOT/common/src/main/res/raw/ic_car_home.png" "$OUT/Payload/iPlay.app/ic_car_home.png"
-chmod +x "$OUT/Payload/iPlay.app/iPlay"
+cp "$ROOT/common/src/main/res/drawable/ic_carplay.png" "$APP/ic_carplay.png"
+cp "$ROOT/common/src/main/res/raw/ic_car_home.png" "$APP/ic_car_home.png"
+chmod +x "$APP/iPlay"
 
 if codesign -dv "$OUT/Payload/iPlay.app/iPlay" >/dev/null 2>&1; then
   echo "ERROR: main binary unexpectedly contains a code signature" >&2
