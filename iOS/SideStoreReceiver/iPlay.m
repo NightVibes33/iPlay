@@ -4521,6 +4521,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
     char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
+    char safeLeftBuf[16], safeTopBuf[16], safeRightBuf[16], safeBottomBuf[16],
+         safeDrawOutsideBuf[8];
     CarPlayDisplayProfile display = preferred_carplay_display_profile();
     uint16_t displayWidth = display.width;
     uint16_t displayHeight = display.height;
@@ -4576,6 +4578,46 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     BOOL rightHandDrive =
         [runtimeDefaults boolForKey:@"iPlayRightHandDrive"];
     BOOL hevcEnabled = [runtimeDefaults boolForKey:@"iPlayHEVC"];
+
+    NSInteger safeLeftPm = [runtimeDefaults objectForKey:@"iPlaySafeLeftPm"]
+        ? [runtimeDefaults integerForKey:@"iPlaySafeLeftPm"] : 0;
+    NSInteger safeTopPm = [runtimeDefaults objectForKey:@"iPlaySafeTopPm"]
+        ? [runtimeDefaults integerForKey:@"iPlaySafeTopPm"] : 0;
+    NSInteger safeRightPm = [runtimeDefaults objectForKey:@"iPlaySafeRightPm"]
+        ? [runtimeDefaults integerForKey:@"iPlaySafeRightPm"] : 1000;
+    NSInteger safeBottomPm = [runtimeDefaults objectForKey:@"iPlaySafeBottomPm"]
+        ? [runtimeDefaults integerForKey:@"iPlaySafeBottomPm"] : 1000;
+    safeLeftPm = MAX(0, MIN(999, safeLeftPm));
+    safeTopPm = MAX(0, MIN(999, safeTopPm));
+    safeRightPm = MAX(safeLeftPm + 1, MIN(1000, safeRightPm));
+    safeBottomPm = MAX(safeTopPm + 1, MIN(1000, safeBottomPm));
+
+    NSInteger safeLeft = (NSInteger)llround(
+        (double)safeLeftPm * displayWidth / 1000.0);
+    NSInteger safeTop = (NSInteger)llround(
+        (double)safeTopPm * displayHeight / 1000.0);
+    NSInteger safeRight = (NSInteger)llround(
+        (double)(1000 - safeRightPm) * displayWidth / 1000.0);
+    NSInteger safeBottom = (NSInteger)llround(
+        (double)(1000 - safeBottomPm) * displayHeight / 1000.0);
+    safeLeft = MAX(0, MIN((NSInteger)displayWidth - 1, safeLeft));
+    safeTop = MAX(0, MIN((NSInteger)displayHeight - 1, safeTop));
+    safeRight = MAX(0, MIN((NSInteger)displayWidth - safeLeft - 1, safeRight));
+    safeBottom = MAX(0, MIN((NSInteger)displayHeight - safeTop - 1, safeBottom));
+
+    /* Upstream AirPlaySafeArea aligns the negotiated safe-area dimensions
+     * to even pixels so the display mapping stays codec-friendly. */
+    if ((((NSInteger)displayWidth - safeLeft - safeRight) & 1) != 0) {
+        if (safeRight < (NSInteger)displayWidth - safeLeft - 1) safeRight++;
+        else if (safeLeft > 0) safeLeft--;
+    }
+    if ((((NSInteger)displayHeight - safeTop - safeBottom) & 1) != 0) {
+        if (safeBottom < (NSInteger)displayHeight - safeTop - 1) safeBottom++;
+        else if (safeTop > 0) safeTop--;
+    }
+
+    BOOL safeDrawOutside = [runtimeDefaults objectForKey:@"iPlaySafeDrawOutside"] == nil
+        ? YES : [runtimeDefaults boolForKey:@"iPlaySafeDrawOutside"];
     snprintf(manufacturerBuf, sizeof(manufacturerBuf), "%s", manufacturer.UTF8String);
     snprintf(modelBuf, sizeof(modelBuf), "%s", modelName.UTF8String);
     snprintf(oemLabelBuf, sizeof(oemLabelBuf), "%s", oemLabel.UTF8String);
@@ -4583,9 +4625,16 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     snprintf(heightPhysicalBuf, sizeof(heightPhysicalBuf), "%ld", (long)heightPhysicalMm);
     snprintf(rightHandDriveBuf, sizeof(rightHandDriveBuf), "%d", rightHandDrive ? 1 : 0);
     snprintf(hevcBuf, sizeof(hevcBuf), "%d", hevcEnabled ? 1 : 0);
+    snprintf(safeLeftBuf, sizeof(safeLeftBuf), "%ld", (long)safeLeft);
+    snprintf(safeTopBuf, sizeof(safeTopBuf), "%ld", (long)safeTop);
+    snprintf(safeRightBuf, sizeof(safeRightBuf), "%ld", (long)safeRight);
+    snprintf(safeBottomBuf, sizeof(safeBottomBuf), "%ld", (long)safeBottom);
+    snprintf(safeDrawOutsideBuf, sizeof(safeDrawOutsideBuf), "%d",
+             safeDrawOutside ? 1 : 0);
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
            "budget=%llu pixels selected=%ux%u@%u physical=%ldx%ldmm basis=%s "
-           "wlan=%s rcvbuf=%d policy=hardware-only layout=ignored",
+           "safe=%ld,%ld,%ld,%ld drawOutside=%d "
+           "wlan=%s rcvbuf=%d policy=hardware-only",
            display.nativeLong, display.nativeShort,
            (unsigned long long)(display.physicalMemory / (1024ULL * 1024ULL)),
            (unsigned long)display.activeProcessors,
@@ -4593,6 +4642,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
            displayWidth, displayHeight, display.framesPerSecond,
            (long)widthPhysicalMm, (long)heightPhysicalMm,
            physicalSizeBasis == 1 ? "height" : "width",
+           (long)safeLeft, (long)safeTop, (long)safeRight, (long)safeBottom,
+           safeDrawOutside ? 1 : 0,
            carplay_wlan_attachment_name(display.wlanAttachment),
            screenReceiveBuffer);
     char *svcArgv[] = {
@@ -4609,6 +4660,11 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         (char*)"--height-physical-mm", heightPhysicalBuf,
         (char*)"--right-hand-drive", rightHandDriveBuf,
         (char*)"--hevc", hevcBuf,
+        (char*)"--safe-left", safeLeftBuf,
+        (char*)"--safe-top", safeTopBuf,
+        (char*)"--safe-right", safeRightBuf,
+        (char*)"--safe-bottom", safeBottomBuf,
+        (char*)"--safe-draw-outside", safeDrawOutsideBuf,
         NULL
     };
     /*
@@ -4630,11 +4686,16 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             NSInteger heightPhysicalCopy = heightPhysicalMm;
             BOOL rightHandDriveCopy = rightHandDrive;
             BOOL hevcEnabledCopy = hevcEnabled;
+            NSInteger safeLeftCopy = safeLeft, safeTopCopy = safeTop;
+            NSInteger safeRightCopy = safeRight, safeBottomCopy = safeBottom;
+            BOOL safeDrawOutsideCopy = safeDrawOutside;
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
                     char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
+                    char safeLeftArg[16], safeTopArg[16], safeRightArg[16],
+                         safeBottomArg[16], safeDrawOutsideArg[8];
                     snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
@@ -4651,6 +4712,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                              rightHandDriveCopy ? 1 : 0);
                     snprintf(hevcArg, sizeof(hevcArg), "%d",
                              hevcEnabledCopy ? 1 : 0);
+                    snprintf(safeLeftArg, sizeof(safeLeftArg), "%ld", (long)safeLeftCopy);
+                    snprintf(safeTopArg, sizeof(safeTopArg), "%ld", (long)safeTopCopy);
+                    snprintf(safeRightArg, sizeof(safeRightArg), "%ld", (long)safeRightCopy);
+                    snprintf(safeBottomArg, sizeof(safeBottomArg), "%ld", (long)safeBottomCopy);
+                    snprintf(safeDrawOutsideArg, sizeof(safeDrawOutsideArg), "%d",
+                             safeDrawOutsideCopy ? 1 : 0);
                     /*
                      * A->A runs over an already trusted Remote-Pairing/RSD
                      * CarKit relationship. Do not advertise AirPlay MFi-SAP
@@ -4674,6 +4741,11 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--height-physical-mm", heightPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
                         (char *)"--hevc", hevcArg,
+                        (char *)"--safe-left", safeLeftArg,
+                        (char *)"--safe-top", safeTopArg,
+                        (char *)"--safe-right", safeRightArg,
+                        (char *)"--safe-bottom", safeBottomArg,
+                        (char *)"--safe-draw-outside", safeDrawOutsideArg,
                         (char *)"--local-simulator",
                         NULL
                     };
@@ -4691,11 +4763,16 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--height-physical-mm", heightPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
                         (char *)"--hevc", hevcArg,
+                        (char *)"--safe-left", safeLeftArg,
+                        (char *)"--safe-top", safeTopArg,
+                        (char *)"--safe-right", safeRightArg,
+                        (char *)"--safe-bottom", safeBottomArg,
+                        (char *)"--safe-draw-outside", safeDrawOutsideArg,
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 26 : 25,
+                        trustedAtoA ? 36 : 35,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
