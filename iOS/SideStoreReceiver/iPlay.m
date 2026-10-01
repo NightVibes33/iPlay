@@ -2730,6 +2730,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) UIImageView *upstreamBrandIcon;
 @property (nonatomic, strong) UIView *upstreamWirelessCard;
 @property (nonatomic, weak) UIImageView *airPlayIconPreview;
+@property (nonatomic, weak) UIButton *activeSendTargetButton;
 
 /* Upstream DiPlay gesture: three-finger swipe down opens the real
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
@@ -3401,6 +3402,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self styleUpstreamButton:sendTargetButton primary:NO];
     [sendTargetButton.heightAnchor constraintEqualToConstant:56].active = YES;
     sendTargetButton.hidden = (self.sideStoreMode != 2);
+    self.activeSendTargetButton = sendTargetButton;
     [sendTargetButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         [self chooseRemoteAtoBReceiverFrom:settings
@@ -4435,6 +4437,15 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [defaults setInteger:port forKey:@"iPlayRemoteReceiverPort"];
     [defaults setInteger:2 forKey:@"iPlayLastMode"];
     self.sideStoreMode = 2;
+    NSString *displayName = name.length ? name : @"iPlay";
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIButton *button = self.activeSendTargetButton;
+        if (button) {
+            [button setTitle:[NSString stringWithFormat:@"Choose send target · %@", displayName]
+                    forState:UIControlStateNormal];
+            button.hidden = NO;
+        }
+    });
 }
 
 - (BOOL)startRemoteAtoBReceiver:(NSDictionary *)receiver {
