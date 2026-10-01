@@ -56,6 +56,7 @@ extern NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout);
 extern void iPlayStopRequestedCarPlaySession(void);
 extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
 extern void iPlayCarPlayServiceSetAppSocket(int fd);
+extern void iPlayCarPlayServiceSetAppPort(uint16_t port);
 extern volatile int g_iPlayAirPlayServerReady;
 
 
@@ -7015,6 +7016,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             return NO;
         }
 
+        /* The receiver may already be running during a retry/reconnect. */
+        iPlayCarPlayServiceSetAppPort(self.ipcPort);
         ip_log("IPC fallback listening on 127.0.0.1:%u fd=%d",
                self.ipcPort, fd);
         dispatch_async(
