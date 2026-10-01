@@ -361,7 +361,7 @@
                        size:15 color:[self upstreamMutedColor] bold:NO];
     [cardStack addArrangedSubview:self.subtitleLabel];
 
-    self.secondaryButton = [self upstreamButtonWithTitle:@"Choose iPhone"
+    self.secondaryButton = [self upstreamButtonWithTitle:@"Connection mode"
                                                 primary:NO
                                                  action:^{ [self secondaryTapped]; }];
     [self.secondaryButton.heightAnchor constraintEqualToConstant:56].active = YES;
@@ -496,7 +496,7 @@
                                             size:16
                                            color:[self upstreamMutedColor]
                                             bold:NO]];
-    [pairStack addArrangedSubview:[self upstreamButtonWithTitle:@"Choose iPhone · This iPhone"
+    [pairStack addArrangedSubview:[self upstreamButtonWithTitle:@"Choose connection mode"
                                                         primary:NO action:^{
         [weakPage dismissViewControllerAnimated:YES completion:^{
             [self showSideStoreModePicker];
