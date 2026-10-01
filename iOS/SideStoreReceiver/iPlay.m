@@ -3229,6 +3229,22 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     });
 }
 
+- (void)terminateApplicationWhenIdleAttempts:(NSInteger)attempts {
+    if (self.state == StateIdle) {
+        exit(0);
+        return;
+    }
+    if (attempts <= 0) {
+        ip_log("[UI] application-exit teardown timed out; terminating");
+        exit(0);
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
+                   dispatch_get_main_queue(), ^{
+        [self terminateApplicationWhenIdleAttempts:attempts - 1];
+    });
+}
+
 - (void)showUpstreamSettings {
     /*
      * Native UIKit translation of upstream CarPlayHostActivity.buildSettingsMenu().
@@ -4119,12 +4135,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         (void)action;
         restoreBaseline();
         [weakSettings dismissViewControllerAnimated:NO completion:^{
-            [self stopFlow];
-            dispatch_after(
-                dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                dispatch_get_main_queue(), ^{
-                    exit(0);
-                });
+            if (self.state != StateIdle && self.state != StateStopping)
+                [self stopFlow];
+            [self terminateApplicationWhenIdleAttempts:100];
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
     [root addArrangedSubview:exitApplication];
