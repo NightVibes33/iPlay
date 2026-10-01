@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <CoreLocation/CoreLocation.h>
 #include <dns_sd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -66,6 +67,129 @@ static int g_listener_fd = -1;
 static DNSServiceRef g_pair_service = NULL;
 
 static pthread_mutex_t g_local_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+
+@interface IPlayCarPlayLocationSource : NSObject <CLLocationManagerDelegate>
+@property (nonatomic, strong) CLLocationManager *manager;
+@property (nonatomic, strong) CLLocation *latestLocation;
++ (instancetype)shared;
+- (void)start;
+- (void)stop;
+- (CLLocation *)freshLocation;
+@end
+
+@implementation IPlayCarPlayLocationSource
++ (instancetype)shared {
+    static IPlayCarPlayLocationSource *source;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ source = [[self alloc] init]; });
+    return source;
+}
+- (void)start {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.manager) {
+            self.manager = [[CLLocationManager alloc] init];
+            self.manager.delegate = self;
+            self.manager.desiredAccuracy = kCLLocationAccuracyBest;
+            self.manager.distanceFilter = kCLDistanceFilterNone;
+        }
+        CLAuthorizationStatus status = self.manager.authorizationStatus;
+        if (status == kCLAuthorizationStatusNotDetermined) {
+            [self.manager requestWhenInUseAuthorization];
+        }
+        [self.manager startUpdatingLocation];
+    });
+}
+- (void)stop {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.manager stopUpdatingLocation];
+    });
+}
+- (CLLocation *)freshLocation {
+    @synchronized (self) {
+        CLLocation *location = self.latestLocation;
+        if (!location || location.horizontalAccuracy < 0) return nil;
+        NSTimeInterval age = fabs([location.timestamp timeIntervalSinceNow]);
+        return age <= 30.0 ? location : nil;
+    }
+}
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations {
+    (void)manager;
+    CLLocation *candidate = locations.lastObject;
+    if (!candidate || candidate.horizontalAccuracy < 0) return;
+    @synchronized (self) {
+        self.latestLocation = candidate;
+    }
+}
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error {
+    (void)manager;
+    local_log("CoreLocation error: %s",
+              error.localizedDescription.UTF8String ?: "unknown");
+}
+@end
+
+static NSString *nmea_coordinate(double value, BOOL latitude, NSString **hemisphere) {
+    double absolute = fabs(value);
+    int degrees = (int)floor(absolute);
+    double minutes = (absolute - degrees) * 60.0;
+    if (minutes >= 59.99995) {
+        degrees += 1;
+        minutes = 0.0;
+    }
+    if (hemisphere) {
+        if (latitude) *hemisphere = value >= 0 ? @"N" : @"S";
+        else *hemisphere = value >= 0 ? @"E" : @"W";
+    }
+    return latitude
+        ? [NSString stringWithFormat:@"%02d%07.4f", degrees, minutes]
+        : [NSString stringWithFormat:@"%03d%07.4f", degrees, minutes];
+}
+
+static uint8_t nmea_checksum(NSString *body) {
+    NSData *data = [body dataUsingEncoding:NSASCIIStringEncoding];
+    const uint8_t *bytes = data.bytes;
+    uint8_t value = 0;
+    for (NSUInteger i = 0; i < data.length; i++) value ^= bytes[i];
+    return value;
+}
+
+static NSString *latest_location_nmea(void) {
+    CLLocation *fix = [[IPlayCarPlayLocationSource shared] freshLocation];
+    if (!fix) return nil;
+
+    NSDateFormatter *timeFormatter = [[NSDateFormatter alloc] init];
+    timeFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    timeFormatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    timeFormatter.dateFormat = @"HHmmss'.00'";
+    NSString *time = [timeFormatter stringFromDate:fix.timestamp ?: [NSDate date]];
+
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    dateFormatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+    dateFormatter.dateFormat = @"ddMMyy";
+    NSString *date = [dateFormatter stringFromDate:fix.timestamp ?: [NSDate date]];
+
+    NSString *latHem = nil, *lonHem = nil;
+    NSString *lat = nmea_coordinate(fix.coordinate.latitude, YES, &latHem);
+    NSString *lon = nmea_coordinate(fix.coordinate.longitude, NO, &lonHem);
+    double hdop = fix.horizontalAccuracy > 0
+        ? MIN(50.0, MAX(0.5, fix.horizontalAccuracy / 5.0)) : 1.0;
+    double altitude = fix.verticalAccuracy >= 0 ? fix.altitude : 0.0;
+    double knots = fix.speed >= 0 ? fix.speed * 1.94384449 : 0.0;
+    double course = fix.course >= 0 ? fix.course : 0.0;
+
+    NSString *ggaBody = [NSString stringWithFormat:
+        @"GPGGA,%@,%@,%@,%@,%@,1,08,%.1f,%.1f,M,0.0,M,,",
+        time, lat, latHem, lon, lonHem, hdop, altitude];
+    NSString *rmcBody = [NSString stringWithFormat:
+        @"GPRMC,%@,A,%@,%@,%@,%@,%.2f,%.2f,%@,,",
+        time, lat, latHem, lon, lonHem, knots, course, date];
+
+    return [NSString stringWithFormat:@"$%@*%02X\r\n$%@*%02X\r\n",
+        ggaBody, nmea_checksum(ggaBody), rmcBody, nmea_checksum(rmcBody)];
+}
 
 static void local_report_failure_once(const char *reason) {
     bool expected = false;
@@ -404,6 +528,7 @@ typedef struct {
     uint8_t received;
     size_t maxFrame;
     Buffer csm;
+    pthread_mutex_t sendLock;
 } Control;
 
 static BOOL control_sync(Control *c) {
@@ -436,25 +561,33 @@ static BOOL control_sync(Control *c) {
     return NO;
 }
 static BOOL control_send_csm(Control *c, uint16_t messageId, const Buffer *params) {
+    pthread_mutex_lock(&c->sendLock);
     Buffer msg; buf_init(&msg, params->length + 16);
     buf_u8(&msg, 0x40); buf_u8(&msg, 0x40);
     buf_u16be(&msg, (uint16_t)(params->length + 6));
     buf_u16be(&msg, messageId);
     buf_put(&msg, params->bytes, params->length);
     size_t maxPayload = c->maxFrame > 10 ? c->maxFrame - 10 : 0;
-    if (!maxPayload) { buf_free(&msg); return NO; }
+    if (!maxPayload) {
+        buf_free(&msg);
+        pthread_mutex_unlock(&c->sendLock);
+        return NO;
+    }
     size_t offset = 0;
     while (offset < msg.length) {
         size_t chunk = maxPayload < (msg.length - offset) ? maxPayload : (msg.length - offset);
         c->sent++;
         if (!send_frame(c->fd, IAP2_ACK, c->sent, c->received,
                         IAP2_SESSION_CONTROL, msg.bytes + offset, chunk)) {
-            buf_free(&msg); return NO;
+            buf_free(&msg);
+            pthread_mutex_unlock(&c->sendLock);
+            return NO;
         }
         offset += chunk;
     }
     local_log("iAP2 tx=0x%04x bytes=%zu", messageId, msg.length);
     buf_free(&msg);
+    pthread_mutex_unlock(&c->sendLock);
     return YES;
 }
 static BOOL control_recv_csm(Control *c, uint16_t *messageId, Buffer *params) {
@@ -520,18 +653,31 @@ static BOOL send_identification(Control *c, NSString *displayName) {
      * Settings -> General -> CarPlay reads. authenticate_or_trusted() still
      * accepts iOS builds that advance directly on the trusted RSD shim.
      */
-    static const uint16_t sent[] = {
+    static const uint16_t sentBase[] = {
         0xaa01,0xaa03,
         0x5000,0x5002,0x5200,0x5203,0xae00,0xae02,
         0x4157,0x4159,0x4154,0x4156,0xae03,0x4301
     };
-    static const uint16_t recv[] = {
+    static const uint16_t recvBase[] = {
         0xaa00,0xaa02,0xaa04,0xaa05,
         0xea00,0xea01,0x5001,0x5201,0x5202,0xae01,
         0x4158,0x4155,0x4300,0x4e0e
     };
-    param_u16_list(&p, 6, sent, sizeof(sent)/sizeof(sent[0]));
-    param_u16_list(&p, 7, recv, sizeof(recv)/sizeof(recv[0]));
+    BOOL locationEnabled =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
+    uint16_t sent[sizeof(sentBase)/sizeof(sentBase[0]) + 1];
+    uint16_t recv[sizeof(recvBase)/sizeof(recvBase[0]) + 2];
+    size_t sentCount = sizeof(sentBase)/sizeof(sentBase[0]);
+    size_t recvCount = sizeof(recvBase)/sizeof(recvBase[0]);
+    memcpy(sent, sentBase, sizeof(sentBase));
+    memcpy(recv, recvBase, sizeof(recvBase));
+    if (locationEnabled) {
+        sent[sentCount++] = 0xfffb;
+        recv[recvCount++] = 0xfffa;
+        recv[recvCount++] = 0xfffc;
+    }
+    param_u16_list(&p, 6, sent, sentCount);
+    param_u16_list(&p, 7, recv, recvCount);
     param_u8(&p, 8, 2);
     param_u16(&p, 9, 20);
     Buffer ea; buf_init(&ea, 64);
@@ -546,6 +692,16 @@ static BOOL send_identification(Control *c, NSString *displayName) {
     param_u8(&usb, 3, 0);
     param_void(&usb, 4);
     param_group(&p, 16, &usb); buf_free(&usb);
+    if (locationEnabled) {
+        Buffer location; buf_init(&location, 96);
+        param_u16(&location, 0, 0);
+        param_string(&location, 1, name);
+        param_void(&location, 17); /* GPS */
+        param_void(&location, 18); /* GLONASS/location metadata */
+        param_group(&p, 22, &location);
+        buf_free(&location);
+        local_log("iAP2 identification includes LocationInformation");
+    }
     Buffer route; buf_init(&route, 96);
     param_u16(&route, 0, 42);
     param_string(&route, 1, "RouteGuidance");
@@ -675,6 +831,70 @@ static BOOL send_subscriptions(Control *c) {
     ok = ok && control_send_csm(c, 0x4154, &p); buf_free(&p);
     return ok;
 }
+
+typedef struct {
+    Control *control;
+    atomic_bool stop;
+    atomic_bool active;
+    pthread_t thread;
+    BOOL started;
+} LocationPump;
+
+static BOOL send_location_information(Control *c) {
+    NSString *nmea = latest_location_nmea();
+    if (!nmea.length) return YES;
+    Buffer p; buf_init(&p, nmea.length + 16);
+    param_string(&p, 0, nmea.UTF8String);
+    BOOL ok = control_send_csm(c, 0xfffb, &p);
+    buf_free(&p);
+    if (ok) local_log("iAP2 tx=0xfffb location-information");
+    return ok;
+}
+
+static void *location_pump_main(void *opaque) {
+    LocationPump *pump = opaque;
+    while (!atomic_load(&pump->stop)) {
+        if (atomic_load(&pump->active)) {
+            if (!send_location_information(pump->control)) {
+                local_log("LocationInformation send failed");
+                break;
+            }
+        }
+        for (int i = 0; i < 10 && !atomic_load(&pump->stop); i++) usleep(100000);
+    }
+    return NULL;
+}
+
+static void location_pump_start(LocationPump *pump, Control *control) {
+    memset(pump, 0, sizeof(*pump));
+    pump->control = control;
+    atomic_init(&pump->stop, false);
+    atomic_init(&pump->active, false);
+    if (pthread_create(&pump->thread, NULL, location_pump_main, pump) == 0)
+        pump->started = YES;
+}
+
+static void location_pump_set_active(LocationPump *pump, BOOL active) {
+    if (!pump->started) return;
+    atomic_store(&pump->active, active);
+    if (active) {
+        [[IPlayCarPlayLocationSource shared] start];
+        /* Upstream sends the first available fix immediately. */
+        send_location_information(pump->control);
+    } else {
+        [[IPlayCarPlayLocationSource shared] stop];
+    }
+}
+
+static void location_pump_stop(LocationPump *pump) {
+    if (!pump->started) return;
+    atomic_store(&pump->active, false);
+    atomic_store(&pump->stop, true);
+    [[IPlayCarPlayLocationSource shared] stop];
+    pthread_join(pump->thread, NULL);
+    pump->started = NO;
+}
+
 static BOOL send_start_session(Control *c, NSInteger port) {
     Buffer p; buf_init(&p, 256);
     Buffer wired; buf_init(&wired, 32);
@@ -698,7 +918,13 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
     Control c = {.fd = fd, .sent = 31, .received = 0, .maxFrame = UINT16_MAX};
+    pthread_mutex_init(&c.sendLock, NULL);
     buf_init(&c.csm, 4096);
+    BOOL locationEnabled =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
+    LocationPump locationPump;
+    memset(&locationPump, 0, sizeof(locationPump));
+    if (locationEnabled) location_pump_start(&locationPump, &c);
     BOOL ok = control_sync(&c);
     if (!ok) goto done;
 
@@ -738,6 +964,14 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
             BOOL sent = send_start_session(&c, airPlayPort);
             buf_free(&p);
             if (!sent) goto done;
+        } else if (id == 0xfffa && locationEnabled) {
+            local_log("iAP2 rx=0xfffa start-location-information");
+            location_pump_set_active(&locationPump, YES);
+            buf_free(&p);
+        } else if (id == 0xfffc && locationEnabled) {
+            local_log("iAP2 rx=0xfffc stop-location-information");
+            location_pump_set_active(&locationPump, NO);
+            buf_free(&p);
         } else if (id == 0xaa04 || id == 0x1d03) {
             buf_free(&p);
             goto done;
@@ -756,6 +990,18 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
             if (!sent) goto done;
             continue;
         }
+        if (id == 0xfffa && locationEnabled) {
+            local_log("iAP2 rx=0xfffa start-location-information");
+            location_pump_set_active(&locationPump, YES);
+            buf_free(&p);
+            continue;
+        }
+        if (id == 0xfffc && locationEnabled) {
+            local_log("iAP2 rx=0xfffc stop-location-information");
+            location_pump_set_active(&locationPump, NO);
+            buf_free(&p);
+            continue;
+        }
         if (id == 0xaa04 || id == 0x1d03) {
             buf_free(&p);
             goto done;
@@ -765,7 +1011,9 @@ static BOOL run_iap2(int fd, NSString *displayName, NSInteger airPlayPort) {
     ok = !atomic_load(&g_local_stop);
 
 done:
+    if (locationEnabled) location_pump_stop(&locationPump);
     buf_free(&c.csm);
+    pthread_mutex_destroy(&c.sendLock);
     return ok;
 }
 
