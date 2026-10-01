@@ -3549,6 +3549,40 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [audioStack addArrangedSubview:audioFocusRow];
     [root addArrangedSubview:audioCard];
 
+    [root addArrangedSubview:categoryLabel(@"Location")];
+    UIStackView *locationStack = nil;
+    UIView *locationCard =
+        [self upstreamSettingsCardWithTitle:@"Report location to iPhone" stack:&locationStack];
+    locationCard.backgroundColor = PANEL;
+    locationCard.layer.borderColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+    UIStackView *locationRow = [[UIStackView alloc] init];
+    locationRow.axis = UILayoutConstraintAxisHorizontal;
+    locationRow.alignment = UIStackViewAlignmentCenter;
+    locationRow.spacing = 16;
+    UIStackView *locationText = [[UIStackView alloc] init];
+    locationText.axis = UILayoutConstraintAxisVertical;
+    locationText.spacing = 5;
+    [locationText addArrangedSubview:[self upstreamLabel:
+        @"LocationInformation" size:20 color:SECONDARY bold:NO]];
+    [locationText addArrangedSubview:[self upstreamLabel:
+        @"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix to CarPlay after reconnect."
+        size:14 color:SECONDARY bold:NO]];
+    [locationRow addArrangedSubview:locationText];
+    UISwitch *locationSwitch = [[UISwitch alloc] init];
+    locationSwitch.onTintColor = ACCENT;
+    locationSwitch.on =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"];
+    __weak UISwitch *weakLocationSwitch = locationSwitch;
+    [locationSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakLocationSwitch.isOn forKey:@"iPlayLocationReport"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [locationRow addArrangedSubview:locationSwitch];
+    [locationStack addArrangedSubview:locationRow];
+    [root addArrangedSubview:locationCard];
+
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
@@ -3570,7 +3604,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [root addArrangedSubview:localCard];
 
     UILabel *applyHint = [self upstreamLabel:
-        @"Size, resolution, frame rate, HEVC, driving side, music buffer and audio routing are applied by the real receiver runtime when the CarPlay session reconnects."
+        @"Size, resolution, frame rate, HEVC, driving side, music buffer, audio routing and A → A location reporting are applied by the real receiver runtime when the CarPlay session reconnects."
         size:15 color:SECONDARY bold:NO];
     [root addArrangedSubview:applyHint];
 
