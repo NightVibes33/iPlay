@@ -2476,6 +2476,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)loadView {
     UIView *root = [[UIView alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
     root.backgroundColor = [UIColor blackColor];
+    /* Preserve upstream two-contact CarPlay input and the three-finger
+     * settings gesture instead of collapsing UIKit to one touch. */
+    root.multipleTouchEnabled = YES;
     self.view = root;
     self.contentView = root;
 }
@@ -2571,6 +2574,99 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 @end
 
+
+/* Exact UIKit equivalent of upstream CarPlayHostActivity's three-finger
+ * swipe-down settings gesture. It consumes the sequence the instant the
+ * third finger lands, before CarPlay can interpret that sequence. */
+@interface ThreeFingerSwipeDownGestureRecognizer : UIGestureRecognizer
+@property (nonatomic, strong) NSMutableSet<UITouch *> *trackedTouches;
+@property (nonatomic, assign) CGPoint startCentroid;
+@property (nonatomic, assign) BOOL trackingThree;
+@end
+
+@implementation ThreeFingerSwipeDownGestureRecognizer
+
+- (instancetype)initWithTarget:(id)target action:(SEL)action {
+    self = [super initWithTarget:target action:action];
+    if (self) {
+        _trackedTouches = [NSMutableSet setWithCapacity:3];
+        self.cancelsTouchesInView = YES;
+        self.delaysTouchesBegan = NO;
+        self.delaysTouchesEnded = NO;
+    }
+    return self;
+}
+
+- (CGPoint)centroidInView:(UIView *)view {
+    if (self.trackedTouches.count == 0) return CGPointZero;
+    CGFloat x = 0.0, y = 0.0;
+    for (UITouch *touch in self.trackedTouches) {
+        CGPoint point = [touch locationInView:view];
+        x += point.x;
+        y += point.y;
+    }
+    CGFloat count = (CGFloat)self.trackedTouches.count;
+    return CGPointMake(x / count, y / count);
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)event;
+    [self.trackedTouches unionSet:touches];
+    if (self.trackedTouches.count > 3) {
+        self.state = UIGestureRecognizerStateFailed;
+        return;
+    }
+    if (self.trackedTouches.count == 3 && !self.trackingThree) {
+        self.trackingThree = YES;
+        self.startCentroid = [self centroidInView:self.view];
+        /* Entering Began makes UIKit cancel the already-forwarded contacts
+         * to RootViewController, equivalent to upstream sendTouch(emptyList()). */
+        self.state = UIGestureRecognizerStateBegan;
+    }
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)touches;
+    (void)event;
+    if (!self.trackingThree || self.trackedTouches.count != 3) return;
+
+    CGPoint now = [self centroidInView:self.view];
+    CGFloat dx = fabs(now.x - self.startCentroid.x);
+    CGFloat dy = now.y - self.startCentroid.y;
+    if (dy >= 72.0 && dy >= dx * 1.15) {
+        self.state = UIGestureRecognizerStateEnded;
+    } else if (self.state == UIGestureRecognizerStateBegan ||
+               self.state == UIGestureRecognizerStateChanged) {
+        self.state = UIGestureRecognizerStateChanged;
+    }
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)event;
+    [self.trackedTouches minusSet:touches];
+    if (self.state == UIGestureRecognizerStateEnded) return;
+    if (self.trackingThree) {
+        self.state = UIGestureRecognizerStateCancelled;
+    } else if (self.trackedTouches.count == 0) {
+        self.state = UIGestureRecognizerStateFailed;
+    }
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    (void)event;
+    [self.trackedTouches minusSet:touches];
+    self.state = UIGestureRecognizerStateCancelled;
+}
+
+- (void)reset {
+    [super reset];
+    [self.trackedTouches removeAllObjects];
+    self.trackingThree = NO;
+    self.startCentroid = CGPointZero;
+}
+
+@end
+
 /* ═══════════════════════════════════════════════════════════════
  * AppDelegate — state machine, UI, IPC
  * ═══════════════════════════════════════════════════════════════ */
@@ -2615,7 +2711,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 /* Upstream DiPlay gesture: three-finger swipe down opens the real
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
-@property (nonatomic, strong) UIPanGestureRecognizer *controlsGesture;
+@property (nonatomic, strong) ThreeFingerSwipeDownGestureRecognizer *controlsGesture;
 @property (nonatomic, assign) BOOL chromeVisible;
 
 /* Lifecycle */
@@ -2722,6 +2818,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.videoView = [[VideoView alloc] initWithFrame:content.bounds];
     self.videoView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.videoView.backgroundColor = [UIColor blackColor];
+    self.videoView.multipleTouchEnabled = YES;
     ((AVSampleBufferDisplayLayer *)self.videoView.layer).videoGravity = AVLayerVideoGravityResizeAspect;
     [content addSubview:self.videoView];
     self.vc.videoView = self.videoView;
@@ -3661,13 +3758,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
      */
     UIView *content = [self rootContentView];
 
-    self.controlsGesture = [[UIPanGestureRecognizer alloc]
+    self.controlsGesture = [[ThreeFingerSwipeDownGestureRecognizer alloc]
         initWithTarget:self action:@selector(toggleChrome:)];
-    self.controlsGesture.minimumNumberOfTouches = 3;
-    self.controlsGesture.maximumNumberOfTouches = 3;
-    self.controlsGesture.cancelsTouchesInView = YES;
-    self.controlsGesture.delaysTouchesBegan = NO;
-    self.controlsGesture.delaysTouchesEnded = NO;
     self.controlsGesture.enabled = NO;
     [content addGestureRecognizer:self.controlsGesture];
 }
@@ -3939,23 +4031,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)closeTapped { [self stopFlow]; }
 - (void)infoTapped  { [self showAbout]; }
 
-- (void)toggleChrome:(UIPanGestureRecognizer *)gesture {
+- (void)toggleChrome:(ThreeFingerSwipeDownGestureRecognizer *)gesture {
     if (self.state != StateActive) return;
-
-    if (gesture.state == UIGestureRecognizerStateChanged) {
-        CGPoint translation = [gesture translationInView:[self rootContentView]];
-        /*
-         * Upstream constants:
-         *   THREE_FINGER_SWIPE_DISTANCE_DP = 72
-         *   THREE_FINGER_SWIPE_DIRECTION_RATIO = 1.15
-         */
-        if (translation.y >= 72.0 &&
-            translation.y >= fabs(translation.x) * 1.15) {
-            ip_log("[UI] upstream three-finger swipe-down opened CarPlay settings");
-            gesture.enabled = NO;
-            gesture.enabled = YES;
-            [self showUpstreamSettings];
-        }
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        ip_log("[UI] upstream three-finger swipe-down opened CarPlay settings");
+        [self showUpstreamSettings];
     }
 }
 
