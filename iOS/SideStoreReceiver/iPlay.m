@@ -4065,6 +4065,28 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventTouchUpInside];
     [root addArrangedSubview:disconnect];
 
+    UIButton *exitApplication = [UIButton buttonWithType:UIButtonTypeCustom];
+    [exitApplication setTitle:@"Exit application" forState:UIControlStateNormal];
+    [exitApplication setTitleColor:TEXT forState:UIControlStateNormal];
+    exitApplication.backgroundColor = DANGER;
+    exitApplication.layer.cornerRadius = 14;
+    exitApplication.titleLabel.font =
+        [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    [exitApplication.heightAnchor constraintEqualToConstant:54].active = YES;
+    [exitApplication addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        restoreBaseline();
+        [weakSettings dismissViewControllerAnimated:NO completion:^{
+            [self stopFlow];
+            dispatch_after(
+                dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                dispatch_get_main_queue(), ^{
+                    exit(0);
+                });
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [root addArrangedSubview:exitApplication];
+
     [self.vc presentViewController:settings animated:YES completion:nil];
 }
 
