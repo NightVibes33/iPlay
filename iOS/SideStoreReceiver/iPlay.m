@@ -3693,7 +3693,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [displayStack addArrangedSubview:physicalHeader];
 
     NSInteger widthPhysical = [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
-    if (widthPhysical < 100 || widthPhysical > 400) widthPhysical = 200;
+    if (widthPhysical < 100 || widthPhysical > 400) widthPhysical = 300;
     widthPhysical = 100 + (NSInteger)llround((widthPhysical - 100) / 50.0) * 50;
     physicalValue.text = [NSString stringWithFormat:@"%ld mm", (long)widthPhysical];
 
@@ -4152,7 +4152,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         NSInteger previewReferenceMm =
             [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
         if (previewReferenceMm < 100 || previewReferenceMm > 400)
-            previewReferenceMm = 200;
+            previewReferenceMm = 300;
         previewReferenceMm =
             100 + (NSInteger)llround((previewReferenceMm - 100) / 50.0) * 50;
 
@@ -5290,7 +5290,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     NSInteger referencePhysicalMm =
         [runtimeDefaults integerForKey:@"iPlayPhysicalWidthMm"];
     if (referencePhysicalMm < 100 || referencePhysicalMm > 400)
-        referencePhysicalMm = 200;
+        referencePhysicalMm = 300;
     referencePhysicalMm =
         100 + (NSInteger)llround((referencePhysicalMm - 100) / 50.0) * 50;
     referencePhysicalMm = MAX(100, MIN(400, referencePhysicalMm));
