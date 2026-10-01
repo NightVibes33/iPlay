@@ -3323,6 +3323,32 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }] forControlEvents:UIControlEventValueChanged];
     [autoRow addArrangedSubview:autoSwitch];
     [autoStack addArrangedSubview:autoRow];
+
+    UIStackView *foregroundRow = [[UIStackView alloc] init];
+    foregroundRow.axis = UILayoutConstraintAxisHorizontal;
+    foregroundRow.alignment = UIStackViewAlignmentCenter;
+    foregroundRow.spacing = 16;
+    UIStackView *foregroundText = [[UIStackView alloc] init];
+    foregroundText.axis = UILayoutConstraintAxisVertical;
+    foregroundText.spacing = 5;
+    [foregroundText addArrangedSubview:[self upstreamLabel:@"Reconnect when iPlay returns"
+                                                     size:20 color:SECONDARY bold:NO]];
+    [foregroundText addArrangedSubview:[self upstreamLabel:
+        @"If the session has stopped, returning to iPlay starts the saved connection mode."
+        size:14 color:SECONDARY bold:NO]];
+    [foregroundRow addArrangedSubview:foregroundText];
+    UISwitch *foregroundSwitch = [[UISwitch alloc] init];
+    foregroundSwitch.onTintColor = ACCENT;
+    foregroundSwitch.on =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoForeground"];
+    __weak UISwitch *weakForegroundSwitch = foregroundSwitch;
+    [foregroundSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakForegroundSwitch.isOn forKey:@"iPlayAutoForeground"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [foregroundRow addArrangedSubview:foregroundSwitch];
+    [autoStack addArrangedSubview:foregroundRow];
     [root addArrangedSubview:automatic];
 
     [root addArrangedSubview:categoryLabel(@"Display & video")];
@@ -3331,6 +3357,29 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     UIView *display = [self upstreamSettingsCardWithTitle:@"Active CarPlay display" stack:&displayStack];
     display.backgroundColor = PANEL;
     display.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    [displayStack addArrangedSubview:[self upstreamLabel:@"CarPlay size" size:20 color:SECONDARY bold:NO]];
+    UISegmentedControl *physicalSize = [[UISegmentedControl alloc]
+        initWithItems:@[@"Large", @"Medium", @"Small"]];
+    NSInteger widthPhysical =
+        [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayPhysicalWidthMm"];
+    if (widthPhysical != 250 && widthPhysical != 300 && widthPhysical != 350)
+        widthPhysical = 300;
+    physicalSize.selectedSegmentIndex =
+        widthPhysical == 250 ? 0 : (widthPhysical == 300 ? 1 : 2);
+    physicalSize.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakPhysicalSize = physicalSize;
+    [physicalSize addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSInteger index = weakPhysicalSize.selectedSegmentIndex;
+        NSInteger value = index == 0 ? 250 : (index == 1 ? 300 : 350);
+        [[NSUserDefaults standardUserDefaults]
+            setInteger:value forKey:@"iPlayPhysicalWidthMm"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:physicalSize];
+    [displayStack addArrangedSubview:[self upstreamLabel:
+        @"Changes the physical display width reported to CarPlay, which changes icon and text sizing."
+        size:14 color:SECONDARY bold:NO]];
 
     [displayStack addArrangedSubview:[self upstreamLabel:@"Resolution" size:20 color:SECONDARY bold:NO]];
     UISegmentedControl *resolution = [[UISegmentedControl alloc]
@@ -3363,6 +3412,77 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }] forControlEvents:UIControlEventValueChanged];
     [displayStack addArrangedSubview:fps];
 
+    [displayStack addArrangedSubview:[self upstreamLabel:@"Music buffer" size:20 color:SECONDARY bold:NO]];
+    UISegmentedControl *musicBuffer = [[UISegmentedControl alloc]
+        initWithItems:@[@"300 ms", @"500 ms", @"1000 ms"]];
+    NSInteger musicBufferMs =
+        [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayMusicBufferMs"];
+    if (musicBufferMs != 300 && musicBufferMs != 500 && musicBufferMs != 1000)
+        musicBufferMs = 300;
+    musicBuffer.selectedSegmentIndex =
+        musicBufferMs == 300 ? 0 : (musicBufferMs == 500 ? 1 : 2);
+    musicBuffer.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakMusicBuffer = musicBuffer;
+    [musicBuffer addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSInteger index = weakMusicBuffer.selectedSegmentIndex;
+        NSInteger value = index == 0 ? 300 : (index == 1 ? 500 : 1000);
+        [[NSUserDefaults standardUserDefaults]
+            setInteger:value forKey:@"iPlayMusicBufferMs"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:musicBuffer];
+
+    UIStackView *hevcRow = [[UIStackView alloc] init];
+    hevcRow.axis = UILayoutConstraintAxisHorizontal;
+    hevcRow.alignment = UIStackViewAlignmentCenter;
+    hevcRow.spacing = 16;
+    UIStackView *hevcText = [[UIStackView alloc] init];
+    hevcText.axis = UILayoutConstraintAxisVertical;
+    hevcText.spacing = 5;
+    [hevcText addArrangedSubview:[self upstreamLabel:@"Efficient video · HEVC (H.265)"
+                                               size:20 color:SECONDARY bold:NO]];
+    [hevcText addArrangedSubview:[self upstreamLabel:
+        @"Advertise HEVC for the CarPlay screen stream. Applies after reconnect."
+        size:14 color:SECONDARY bold:NO]];
+    [hevcRow addArrangedSubview:hevcText];
+    UISwitch *hevcSwitch = [[UISwitch alloc] init];
+    hevcSwitch.onTintColor = ACCENT;
+    hevcSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayHEVC"];
+    __weak UISwitch *weakHevcSwitch = hevcSwitch;
+    [hevcSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakHevcSwitch.isOn forKey:@"iPlayHEVC"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [hevcRow addArrangedSubview:hevcSwitch];
+    [displayStack addArrangedSubview:hevcRow];
+
+    UIStackView *rhdRow = [[UIStackView alloc] init];
+    rhdRow.axis = UILayoutConstraintAxisHorizontal;
+    rhdRow.alignment = UIStackViewAlignmentCenter;
+    rhdRow.spacing = 16;
+    UIStackView *rhdText = [[UIStackView alloc] init];
+    rhdText.axis = UILayoutConstraintAxisVertical;
+    rhdText.spacing = 5;
+    [rhdText addArrangedSubview:[self upstreamLabel:@"Right-hand drive"
+                                              size:20 color:SECONDARY bold:NO]];
+    [rhdText addArrangedSubview:[self upstreamLabel:
+        @"Report right-hand-drive layout so CarPlay places driver-side controls correctly."
+        size:14 color:SECONDARY bold:NO]];
+    [rhdRow addArrangedSubview:rhdText];
+    UISwitch *rhdSwitch = [[UISwitch alloc] init];
+    rhdSwitch.onTintColor = ACCENT;
+    rhdSwitch.on =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
+    __weak UISwitch *weakRhdSwitch = rhdSwitch;
+    [rhdSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakRhdSwitch.isOn forKey:@"iPlayRightHandDrive"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [rhdRow addArrangedSubview:rhdSwitch];
+    [displayStack addArrangedSubview:rhdRow];
+
     UIStackView *fullRow = [[UIStackView alloc] init];
     fullRow.axis = UILayoutConstraintAxisHorizontal;
     fullRow.alignment = UIStackViewAlignmentCenter;
@@ -3391,6 +3511,43 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [displayStack addArrangedSubview:fullRow];
     [root addArrangedSubview:display];
 
+    [root addArrangedSubview:categoryLabel(@"Audio")];
+    UIStackView *audioStack = nil;
+    UIView *audioCard = [self upstreamSettingsCardWithTitle:@"Audio routing" stack:&audioStack];
+    audioCard.backgroundColor = PANEL;
+    audioCard.layer.borderColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    UIStackView *audioFocusRow = [[UIStackView alloc] init];
+    audioFocusRow.axis = UILayoutConstraintAxisHorizontal;
+    audioFocusRow.alignment = UIStackViewAlignmentCenter;
+    audioFocusRow.spacing = 16;
+    UIStackView *audioFocusText = [[UIStackView alloc] init];
+    audioFocusText.axis = UILayoutConstraintAxisVertical;
+    audioFocusText.spacing = 5;
+    [audioFocusText addArrangedSubview:[self upstreamLabel:@"Audio focus"
+                                                     size:20 color:SECONDARY bold:NO]];
+    [audioFocusText addArrangedSubview:[self upstreamLabel:
+        @"When enabled, CarPlay owns playback focus. Disable it to mix with other iPhone audio."
+        size:14 color:SECONDARY bold:NO]];
+    [audioFocusRow addArrangedSubview:audioFocusText];
+    UISwitch *audioFocusSwitch = [[UISwitch alloc] init];
+    audioFocusSwitch.onTintColor = ACCENT;
+    BOOL audioFocusEnabled =
+        [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayAudioFocus"] == nil
+            ? YES
+            : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAudioFocus"];
+    audioFocusSwitch.on = audioFocusEnabled;
+    __weak UISwitch *weakAudioFocusSwitch = audioFocusSwitch;
+    [audioFocusSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [[NSUserDefaults standardUserDefaults]
+            setBool:weakAudioFocusSwitch.isOn forKey:@"iPlayAudioFocus"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [audioFocusRow addArrangedSubview:audioFocusSwitch];
+    [audioStack addArrangedSubview:audioFocusRow];
+    [root addArrangedSubview:audioCard];
+
     [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
@@ -3412,7 +3569,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [root addArrangedSubview:localCard];
 
     UILabel *applyHint = [self upstreamLabel:
-        @"Resolution and frame-rate changes are negotiated when the CarPlay session reconnects."
+        @"Size, resolution, frame rate, HEVC, driving side, music buffer and audio routing are applied by the real receiver runtime when the CarPlay session reconnects."
         size:15 color:SECONDARY bold:NO];
     [root addArrangedSubview:applyHint];
 
