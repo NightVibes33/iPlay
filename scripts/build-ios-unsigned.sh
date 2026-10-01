@@ -253,10 +253,10 @@ cp "$SRC/Info.plist" "$APP/Info.plist"
 # letterboxing before UIKit lays out the upstream surface.
 xcrun ibtool --compile "$APP/LaunchScreen.storyboardc" "$SRC/LaunchScreen.storyboard"
 
-# Use the repository's original iPlay artwork as the installed app icon.
+# Use upstream DiPlay's original launcher artwork as the installed app icon.
 # Generate the concrete iPhone/iPad icon sizes expected by the legacy
 # CFBundleIconFiles metadata so sideloaded builds do not show a blank icon.
-ICON_SRC="$ROOT/site/assets/icon.png"
+ICON_SRC="$ROOT/shared/src/main/ic_launcher-playstore.png"
 test -s "$ICON_SRC"
 sips -z 60 60   "$ICON_SRC" --out "$APP/AppIcon60x60.png" >/dev/null
 sips -z 120 120 "$ICON_SRC" --out "$APP/AppIcon60x60@2x.png" >/dev/null
