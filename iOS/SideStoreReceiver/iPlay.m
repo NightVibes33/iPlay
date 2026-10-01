@@ -2735,6 +2735,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 /* Upstream DiPlay gesture: three-finger swipe down opens the real
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
 @property (nonatomic, strong) ThreeFingerSwipeDownGestureRecognizer *controlsGesture;
+@property (nonatomic, strong) UITextView *debugOverlayView;
+@property (nonatomic, strong) NSTimer *debugOverlayTimer;
 
 /* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
 - (void)buildUpstreamHomeReal;
@@ -3275,6 +3277,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
         @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
+        @"iPlayDebugLogs",
         @"iPlayManufacturer", @"iPlayModel", @"iPlayOEMLabel",
         @"iPlaySafeLeftPm", @"iPlaySafeTopPm",
         @"iPlaySafeRightPm", @"iPlaySafeBottomPm",
@@ -3308,6 +3311,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             [self.vc.view setNeedsLayout];
             [self.vc.view layoutIfNeeded];
         }
+        BOOL baselineDebug =
+            baseline[@"iPlayDebugLogs"] != [NSNull null]
+                ? [baseline[@"iPlayDebugLogs"] boolValue] : NO;
+        [self setDebugOverlayEnabled:baselineDebug];
     };
 
     UIViewController *settings = [[UIViewController alloc] init];
@@ -4075,6 +4082,32 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIStackView *diagnosticStack = nil;
     UIView *diagnosticCard =
         [self upstreamSettingsCardWithTitle:@"Receiver logs" stack:&diagnosticStack];
+
+    UIStackView *debugRow = [[UIStackView alloc] init];
+    debugRow.axis = UILayoutConstraintAxisHorizontal;
+    debugRow.alignment = UIStackViewAlignmentCenter;
+    debugRow.spacing = 16;
+    UIStackView *debugText = [[UIStackView alloc] init];
+    debugText.axis = UILayoutConstraintAxisVertical;
+    debugText.spacing = 5;
+    [debugText addArrangedSubview:
+        [self upstreamLabel:@"Debug logs" size:20 color:SECONDARY bold:NO]];
+    [debugText addArrangedSubview:[self upstreamLabel:
+        @"Show the live iPlay log over the CarPlay screen."
+        size:14 color:SECONDARY bold:NO]];
+    [debugRow addArrangedSubview:debugText];
+    UISwitch *debugSwitch = [[UISwitch alloc] init];
+    debugSwitch.onTintColor = ACCENT;
+    debugSwitch.on = [settingsDefaults boolForKey:@"iPlayDebugLogs"];
+    __weak UISwitch *weakDebugSwitch = debugSwitch;
+    [debugSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [settingsDefaults setBool:weakDebugSwitch.isOn forKey:@"iPlayDebugLogs"];
+        [self setDebugOverlayEnabled:weakDebugSwitch.isOn];
+    }] forControlEvents:UIControlEventValueChanged];
+    [debugRow addArrangedSubview:debugSwitch];
+    [diagnosticStack addArrangedSubview:debugRow];
+
     [diagnosticStack addArrangedSubview:[self upstreamLabel:
         @"Export the live iPlay application and receiver log as a local text report."
         size:15 color:SECONDARY bold:NO]];
@@ -4235,6 +4268,45 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
 #include "upstream_ui.inc"
 
+- (NSString *)debugOverlayTailText {
+    NSData *data = [NSData dataWithContentsOfFile:@APP_LOG];
+    if (data.length == 0) return @"Waiting for iPlay logs…";
+
+    NSUInteger keep = MIN((NSUInteger)12000, data.length);
+    NSData *tail = [data subdataWithRange:NSMakeRange(data.length - keep, keep)];
+    NSString *text = [[NSString alloc] initWithData:tail encoding:NSUTF8StringEncoding];
+    if (!text.length) return @"Waiting for iPlay logs…";
+
+    NSArray<NSString *> *lines = [text componentsSeparatedByCharactersInSet:
+        [NSCharacterSet newlineCharacterSet]];
+    NSInteger start = MAX(0, (NSInteger)lines.count - 12);
+    NSArray<NSString *> *last = [lines subarrayWithRange:
+        NSMakeRange((NSUInteger)start, lines.count - (NSUInteger)start)];
+    return [last componentsJoinedByString:@"\n"];
+}
+
+- (void)refreshDebugOverlay {
+    if (!self.debugOverlayView || self.debugOverlayView.hidden) return;
+    self.debugOverlayView.text = [self debugOverlayTailText];
+    NSRange end = NSMakeRange(self.debugOverlayView.text.length, 0);
+    [self.debugOverlayView scrollRangeToVisible:end];
+}
+
+- (void)setDebugOverlayEnabled:(BOOL)enabled {
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"iPlayDebugLogs"];
+    BOOL visible = enabled && self.state == StateActive;
+    self.debugOverlayView.hidden = !visible;
+
+    [self.debugOverlayTimer invalidate];
+    self.debugOverlayTimer = nil;
+    if (visible) {
+        [self refreshDebugOverlay];
+        self.debugOverlayTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+            target:self selector:@selector(refreshDebugOverlay)
+            userInfo:nil repeats:YES];
+    }
+}
+
 - (void)buildChrome {
     /*
      * Match upstream CarPlayHostActivity.onHostTouch(): no permanent fake
@@ -4248,6 +4320,27 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         initWithTarget:self action:@selector(toggleChrome:)];
     self.controlsGesture.enabled = NO;
     [content addGestureRecognizer:self.controlsGesture];
+
+    self.debugOverlayView = [[UITextView alloc] init];
+    self.debugOverlayView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.debugOverlayView.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
+    self.debugOverlayView.textColor = [UIColor colorWithWhite:1 alpha:0.92];
+    self.debugOverlayView.font = [UIFont monospacedSystemFontOfSize:11
+                                                            weight:UIFontWeightRegular];
+    self.debugOverlayView.editable = NO;
+    self.debugOverlayView.selectable = NO;
+    self.debugOverlayView.scrollEnabled = YES;
+    self.debugOverlayView.userInteractionEnabled = NO;
+    self.debugOverlayView.layer.cornerRadius = 10;
+    self.debugOverlayView.hidden = YES;
+    [content addSubview:self.debugOverlayView];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.debugOverlayView.leadingAnchor constraintEqualToAnchor:content.safeAreaLayoutGuide.leadingAnchor constant:12],
+        [self.debugOverlayView.trailingAnchor constraintLessThanOrEqualToAnchor:content.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [self.debugOverlayView.bottomAnchor constraintEqualToAnchor:content.safeAreaLayoutGuide.bottomAnchor constant:-12],
+        [self.debugOverlayView.widthAnchor constraintLessThanOrEqualToConstant:720],
+        [self.debugOverlayView.heightAnchor constraintEqualToConstant:190]
+    ]];
 }
 
 - (BOOL)isPhone {
@@ -4278,6 +4371,15 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     self.setupOverlay.hidden = NO;
     self.controlsGesture.enabled = (self.state == StateActive);
+    BOOL debugLogsEnabled =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayDebugLogs"];
+    if (self.state == StateActive) {
+        [self setDebugOverlayEnabled:debugLogsEnabled];
+    } else {
+        self.debugOverlayView.hidden = YES;
+        [self.debugOverlayTimer invalidate];
+        self.debugOverlayTimer = nil;
+    }
     if (self.state != StateActive) {
         /* Restore the 1024x768 canvas in every non-Active state. */
         if ([self isPhone] && self.vc.fullscreenMode) {
