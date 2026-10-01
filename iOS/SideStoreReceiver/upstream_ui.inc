@@ -301,6 +301,8 @@
     [header addArrangedSubview:home];
     [root addArrangedSubview:header];
 
+    BOOL wide = [self rootContentView].bounds.size.width >= 850.0;
+
     UIStackView *hero = [self upstreamVerticalStack:10];
     self.upstreamEyebrowLabel =
         [self upstreamLabel:@"YOUR PHONE. YOUR DRIVE."
@@ -308,7 +310,7 @@
     self.upstreamEyebrowLabel.accessibilityLabel = @"Your phone. Your drive.";
     self.upstreamHeroTitleLabel =
         [self upstreamLabel:@"A familiar drive."
-                       size:(UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone ? 36 : 42)
+                       size:(wide ? 42 : 36)
                       color:[self upstreamTextColor] bold:YES];
     self.upstreamHeroBodyLabel =
         [self upstreamLabel:@"Your maps, music and conversations.\nCarPlay, right here on your display."
@@ -401,9 +403,6 @@
     self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamPreviewLabel];
 
-    /* Match upstream DiPlayActivity exactly: width alone selects the
-     * two-column home layout. iPhone 16 landscape is wide enough. */
-    BOOL wide = [self rootContentView].bounds.size.width >= 850.0;
     UIStackView *body = [self upstreamVerticalStack:0];
     if (wide) {
         UIStackView *top = [[UIStackView alloc] init];
