@@ -125,44 +125,12 @@
     [parent addArrangedSubview:line];
 }
 
-- (void)upstreamReconnectCurrentMode {
-    NSInteger savedMode = self.sideStoreMode;
-    if (self.state == StateIdle) {
-        self.sideStoreMode = savedMode;
-        [self attemptStart];
-        return;
-    }
-    [self stopFlow];
-    __weak typeof(self) weakSelf = self;
-    __block NSInteger attempts = 0;
-    __block void (^poll)(void);
-    poll = ^{
-        typeof(self) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        attempts++;
-        if (strongSelf.state == StateIdle) {
-            strongSelf.sideStoreMode = savedMode;
-            [strongSelf attemptStart];
-            return;
-        }
-        if (attempts < 50) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                         (int64_t)(0.2 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), poll);
-        }
-    };
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                 (int64_t)(0.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), poll);
-}
-
 - (UIButton *)upstreamAddChoiceTo:(UIStackView *)parent
                             title:(NSString *)title
                           options:(NSArray<NSString *> *)options
                            values:(NSArray<NSNumber *> *)values
                        currentKey:(NSString *)key
-                     defaultValue:(NSInteger)defaultValue
-                       reconnects:(BOOL)reconnects {
+                     defaultValue:(NSInteger)defaultValue {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSInteger value = [defaults objectForKey:key] ? [defaults integerForKey:key] : defaultValue;
     __block NSInteger selected = [values indexOfObject:@(value)];
@@ -191,12 +159,6 @@
                 [weakButton setTitle:
                     [NSString stringWithFormat:@"%@ · %@", title, options[selected]]
                               forState:UIControlStateNormal];
-                if (reconnects &&
-                    (self.state == StateActive ||
-                     self.state == StateAwaitingPhone ||
-                     self.state == StatePreparingNet)) {
-                    [self upstreamReconnectCurrentMode];
-                }
             }]];
         }
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
@@ -659,8 +621,7 @@
                       options:@[@"100 mm", @"150 mm", @"200 mm", @"250 mm", @"300 mm", @"350 mm", @"400 mm"]
                        values:@[@100, @150, @200, @250, @300, @350, @400]
                    currentKey:@"iPlayPhysicalWidthMm"
-                 defaultValue:200
-                   reconnects:NO];
+                 defaultValue:200];
     [displayStack addArrangedSubview:[self upstreamLabel:
         @"Changes the size of CarPlay icons and text by changing the physical display width reported to the iPhone."
                                             size:14
@@ -672,24 +633,21 @@
                       options:@[@"0.3x", @"0.4x", @"0.5x", @"0.6x", @"0.7x", @"0.8x", @"0.9x", @"1.0x"]
                        values:@[@3, @4, @5, @6, @7, @8, @9, @10]
                    currentKey:@"iPlayDisplayScaleTenths"
-                 defaultValue:10
-                   reconnects:NO];
+                 defaultValue:10];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Music buffer"
                       options:@[@"300 ms · default", @"500 ms", @"1000 ms · most stable"]
                        values:@[@300, @500, @1000]
                    currentKey:@"iPlayMusicBufferMs"
-                 defaultValue:300
-                   reconnects:NO];
+                 defaultValue:300];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Frame rate"
                       options:@[@"30 fps", @"35 fps", @"40 fps", @"45 fps", @"50 fps", @"55 fps", @"60 fps"]
                        values:@[@30, @35, @40, @45, @50, @55, @60]
                    currentKey:@"iPlayFrameRate"
-                 defaultValue:60
-                   reconnects:NO];
+                 defaultValue:60];
 
     [self upstreamAddToggleTo:displayStack
                         title:@"Efficient video"
