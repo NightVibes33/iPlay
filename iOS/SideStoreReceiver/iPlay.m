@@ -3226,7 +3226,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }
     if (self.state == StateIdle) {
         self.sideStoreMode = mode;
-        [self attemptStart];
+        if (mode == 2) [self startRemoteAtoB];
+        else [self attemptStart];
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
@@ -3379,13 +3380,15 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     connection.layer.borderColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
 
     UISegmentedControl *modeSelector = [[UISegmentedControl alloc]
-        initWithItems:@[@"This iPhone · A → A", @"Receive · A → B"]];
-    modeSelector.selectedSegmentIndex = self.sideStoreMode == 1 ? 1 : 0;
+        initWithItems:@[@"This iPhone · A → A", @"Receive · A → B", @"Send · A → B"]];
+    modeSelector.selectedSegmentIndex =
+        self.sideStoreMode == 2 ? 2 : (self.sideStoreMode == 1 ? 1 : 0);
     modeSelector.selectedSegmentTintColor = ACCENT;
     __weak UISegmentedControl *weakModeSelector = modeSelector;
     [modeSelector addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        NSInteger mode = weakModeSelector.selectedSegmentIndex == 1 ? 1 : 0;
+        NSInteger mode = weakModeSelector.selectedSegmentIndex;
+        if (mode < 0 || mode > 2) mode = 0;
         self.sideStoreMode = mode;
         [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
     }] forControlEvents:UIControlEventValueChanged];
@@ -3404,7 +3407,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     autoText.axis = UILayoutConstraintAxisVertical;
     autoText.spacing = 5;
     [autoText addArrangedSubview:[self upstreamLabel:@"Connect when iPlay opens" size:20 color:SECONDARY bold:NO]];
-    [autoText addArrangedSubview:[self upstreamLabel:@"Use the last selected A → A / A → B receiver mode." size:14 color:SECONDARY bold:NO]];
+    [autoText addArrangedSubview:[self upstreamLabel:@"Use the last selected A → A, receive A → B, or send A → B mode." size:14 color:SECONDARY bold:NO]];
     [autoRow addArrangedSubview:autoText];
     UISwitch *autoSwitch = [[UISwitch alloc] init];
     autoSwitch.onTintColor = ACCENT;
