@@ -3025,6 +3025,31 @@ static const char *iplay_ipc_socket_path(void) {
 
 static int g_app_sock = -1;
 static volatile bool g_app_video_enabled = true;
+
+void iPlayCarPlayServiceSetAppSocket(int fd) {
+    if (fd < 0) return;
+
+    if (g_app_send_lock)
+        dispatch_semaphore_wait(g_app_send_lock, DISPATCH_TIME_FOREVER);
+
+    if (g_app_sock >= 0) {
+        shutdown(g_app_sock, SHUT_RDWR);
+        close(g_app_sock);
+        g_app_sock = -1;
+    }
+    if (g_app_fd >= 0) {
+        shutdown(g_app_fd, SHUT_RDWR);
+        close(g_app_fd);
+        g_app_fd = -1;
+    }
+
+    g_app_fd = fd;
+    g_app_port = 0;
+    printf("[SCREEN] Installed fresh in-process app IPC fd=%d\n", fd);
+
+    if (g_app_send_lock)
+        dispatch_semaphore_signal(g_app_send_lock);
+}
 static volatile uint32_t g_screen_latency_ms = 75;
 
 /* AirPlayScreenHeader.smallParam[1] bit 1 (kAirPlayScreenFlag_RespectTimestamps).
@@ -6342,6 +6367,7 @@ int main(int argc, char *argv[]) {
      * across retry/reconnect cycles. Never reuse the previous UI IPC socket.
      */
     if (g_app_sock >= 0) {
+        shutdown(g_app_sock, SHUT_RDWR);
         close(g_app_sock);
         g_app_sock = -1;
     }
