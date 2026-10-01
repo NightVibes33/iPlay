@@ -2748,14 +2748,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         self.sideStoreMode = (savedMode == 1) ? 1 : 0;
         ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
         if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
-            ip_log("[UI] Auto Connect enabled; starting saved mode=%ld",
+            ip_log("[SIDESTORE] Auto Connect scheduled for saved mode=%ld",
                    (long)self.sideStoreMode);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (self.state == StateIdle) [self attemptStart];
-            });
-        }
-        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
-            ip_log("[SIDESTORE] iPlayAutoConnect scheduled");
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                          (int64_t)(0.65 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
@@ -3464,6 +3458,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [self.vc presentViewController:settings animated:YES completion:nil];
 }
 
+#include "upstream_ui.inc"
+
 - (void)buildChrome {
     /*
      * Match upstream CarPlayHostActivity.onHostTouch(): no permanent fake
@@ -3508,7 +3504,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 
 - (void)renderState {
-    [self layoutSetupOverlay];
+    [self layoutUpstreamHomeReal];
 
     self.setupOverlay.hidden = NO;
     self.controlsGesture.enabled = (self.state == StateActive);
@@ -3744,7 +3740,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 - (void)tertiaryTapped {
     if (self.state != StateIdle) return;
-    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
     else [self showCars];
 }
 
