@@ -3369,6 +3369,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     UIColor *PANEL = [UIColor colorWithRed:12/255.0 green:16/255.0 blue:19/255.0 alpha:1];
     UIColor *SECONDARY = [UIColor colorWithRed:170/255.0 green:180/255.0 blue:190/255.0 alpha:1];
     UIColor *ACCENT = [UIColor colorWithRed:127/255.0 green:205/255.0 blue:154/255.0 alpha:1];
+    UIColor *ACCENT_TRACK = [UIColor colorWithRed:78/255.0 green:143/255.0 blue:102/255.0 alpha:1];
     UIColor *TEXT = [UIColor whiteColor];
     UIColor *DANGER = [UIColor colorWithRed:190/255.0 green:45/255.0 blue:45/255.0 alpha:1];
 
@@ -3561,7 +3562,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [autoText addArrangedSubview:[self upstreamLabel:@"Use the last selected A → A, receive A → B, or send A → B mode." size:14 color:SECONDARY bold:NO]];
     [autoRow addArrangedSubview:autoText];
     UISwitch *autoSwitch = [[UISwitch alloc] init];
-    autoSwitch.onTintColor = ACCENT;
+    autoSwitch.onTintColor = ACCENT_TRACK;
     autoSwitch.on = [settingsDefaults boolForKey:@"iPlayAutoConnect"];
     __weak UISwitch *weakAutoSwitch = autoSwitch;
     [autoSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
@@ -3585,7 +3586,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [foregroundRow addArrangedSubview:foregroundText];
     UISwitch *foregroundSwitch = [[UISwitch alloc] init];
-    foregroundSwitch.onTintColor = ACCENT;
+    foregroundSwitch.onTintColor = ACCENT_TRACK;
     foregroundSwitch.on =
         [settingsDefaults boolForKey:@"iPlayAutoForeground"];
     __weak UISwitch *weakForegroundSwitch = foregroundSwitch;
@@ -3748,7 +3749,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [rhdRow addArrangedSubview:rhdText];
     UISwitch *rhdSwitch = [[UISwitch alloc] init];
-    rhdSwitch.onTintColor = ACCENT;
+    rhdSwitch.onTintColor = ACCENT_TRACK;
     rhdSwitch.on =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
     __weak UISwitch *weakRhdSwitch = rhdSwitch;
@@ -3935,7 +3936,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [hevcRow addArrangedSubview:hevcText];
     UISwitch *hevcSwitch = [[UISwitch alloc] init];
-    hevcSwitch.onTintColor = ACCENT;
+    hevcSwitch.onTintColor = ACCENT_TRACK;
     hevcSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayHEVC"];
     __weak UISwitch *weakHevcSwitch = hevcSwitch;
     [hevcSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
@@ -4076,7 +4077,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [drawOutsideRow addArrangedSubview:drawOutsideText];
     UISwitch *drawOutsideSwitch = [[UISwitch alloc] init];
-    drawOutsideSwitch.onTintColor = ACCENT;
+    drawOutsideSwitch.onTintColor = ACCENT_TRACK;
     drawOutsideSwitch.on =
         [settingsDefaults objectForKey:@"iPlaySafeDrawOutside"] == nil
             ? YES : [settingsDefaults boolForKey:@"iPlaySafeDrawOutside"];
@@ -4103,7 +4104,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [fullText addArrangedSubview:[self upstreamLabel:@"Fill the iPhone display while CarPlay is open." size:14 color:SECONDARY bold:NO]];
     [fullRow addArrangedSubview:fullText];
     UISwitch *fullSwitch = [[UISwitch alloc] init];
-    fullSwitch.onTintColor = ACCENT;
+    fullSwitch.onTintColor = ACCENT_TRACK;
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayFullScreen"] == nil)
         [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"iPlayFullScreen"];
     fullSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayFullScreen"];
@@ -4137,7 +4138,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [audioFocusRow addArrangedSubview:audioFocusText];
     UISwitch *audioFocusSwitch = [[UISwitch alloc] init];
-    audioFocusSwitch.onTintColor = ACCENT;
+    audioFocusSwitch.onTintColor = ACCENT_TRACK;
     BOOL audioFocusEnabled =
         [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayAudioFocus"] == nil
             ? NO
@@ -4171,7 +4172,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [locationRow addArrangedSubview:locationText];
 
     UISwitch *locationSwitch = [[UISwitch alloc] init];
-    locationSwitch.onTintColor = ACCENT;
+    locationSwitch.onTintColor = ACCENT_TRACK;
     locationSwitch.on = [settingsDefaults boolForKey:@"iPlayLocationReport"];
     self.locationSettingsSwitch = locationSwitch;
     __weak UISwitch *weakLocationSwitch = locationSwitch;
@@ -4204,7 +4205,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         size:14 color:SECONDARY bold:NO]];
     [debugRow addArrangedSubview:debugText];
     UISwitch *debugSwitch = [[UISwitch alloc] init];
-    debugSwitch.onTintColor = ACCENT;
+    debugSwitch.onTintColor = ACCENT_TRACK;
     debugSwitch.on = [settingsDefaults boolForKey:@"iPlayDebugLogs"];
     __weak UISwitch *weakDebugSwitch = debugSwitch;
     [debugSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
