@@ -125,32 +125,6 @@
     [parent addArrangedSubview:line];
 }
 
-- (void)upstreamAddUnavailableToggleTo:(UIStackView *)parent
-                                 title:(NSString *)title
-                           description:(NSString *)description {
-    UIStackView *line = [[UIStackView alloc] init];
-    line.axis = UILayoutConstraintAxisHorizontal;
-    line.alignment = UIStackViewAlignmentCenter;
-    line.spacing = 16;
-    UIStackView *text = [self upstreamVerticalStack:6];
-    [text addArrangedSubview:[self upstreamLabel:title
-                                            size:18
-                                           color:[self upstreamTextColor]
-                                            bold:YES]];
-    [text addArrangedSubview:[self upstreamLabel:description
-                                            size:14
-                                           color:[self upstreamMutedColor]
-                                            bold:NO]];
-    [line addArrangedSubview:text];
-    UISwitch *toggle = [[UISwitch alloc] init];
-    toggle.enabled = NO;
-    toggle.on = NO;
-    [toggle setContentHuggingPriority:UILayoutPriorityRequired
-                             forAxis:UILayoutConstraintAxisHorizontal];
-    [line addArrangedSubview:toggle];
-    [parent addArrangedSubview:line];
-}
-
 - (void)upstreamReconnectCurrentMode {
     NSInteger savedMode = self.sideStoreMode;
     if (self.state == StateIdle) {
