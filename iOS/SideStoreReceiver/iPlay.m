@@ -2741,7 +2741,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 /* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
 - (void)buildUpstreamHomeReal;
 - (void)layoutUpstreamHomeReal;
-- (void)showUpstreamSettingsReal;
 - (void)startRemoteAtoB;
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection;
@@ -4968,7 +4967,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 }
 - (void)tertiaryTapped {
     if (self.state != StateIdle) return;
-    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
     else [self showCars];
 }
 
