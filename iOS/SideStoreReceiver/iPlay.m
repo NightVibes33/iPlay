@@ -5663,7 +5663,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }
 
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
-    char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
+    char appPortBuf[16], widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
     char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     char safeLeftBuf[16], safeTopBuf[16], safeRightBuf[16], safeBottomBuf[16],
          safeDrawOutsideBuf[8];
@@ -5682,6 +5682,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             ? 2 * 1024 * 1024
             : (display.framesPerSecond <= 30 ? 1024 * 1024 : 512 * 1024);
     snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
+    snprintf(appPortBuf, sizeof(appPortBuf), "%u", self.ipcPort);
     snprintf(widthBuf, sizeof(widthBuf), "%u", displayWidth);
     snprintf(heightBuf, sizeof(heightBuf), "%u", displayHeight);
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
@@ -5825,6 +5826,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             NSString *manufacturerCopy = [manufacturer copy];
             NSString *modelCopy = [modelName copy];
             NSString *oemLabelCopy = [oemLabel copy];
+            uint16_t appPortCopy = self.ipcPort;
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
@@ -5837,7 +5839,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
-                    char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
+                    char appPortArg[16], widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     char safeLeftArg[16], safeTopArg[16], safeRightArg[16],
                          safeBottomArg[16], safeDrawOutsideArg[8];
@@ -5845,6 +5847,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
                     snprintf(oemLabelArg, sizeof(oemLabelArg), "%s", oemLabelCopy.UTF8String);
+                    snprintf(appPortArg, sizeof(appPortArg), "%u", appPortCopy);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
@@ -5878,6 +5881,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
+                        (char *)"--app-port", appPortArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -5900,6 +5904,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
+                        (char *)"--app-port", appPortArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -6850,50 +6855,123 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
     if (iPlayIsStockSideStoreBuild()) {
         /*
-         * The SideStore receiver runs in-process. Use a full-duplex socketpair
-         * instead of bind/listen/connect on loopback: no Local Network policy,
-         * no ephemeral-port race, and no stale filesystem socket.
+         * Preferred A->A transport: a full-duplex in-process socketpair.
+         * It avoids Local Network policy, port races, and filesystem sockets.
          */
         if (self.clientFd >= 0) {
             close(self.clientFd);
             self.clientFd = -1;
         }
+
         int pair[2] = { -1, -1 };
-        if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
-            ip_log("IPC socketpair failed errno=%d %s", errno, strerror(errno));
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0) {
+            int noSigPipe = 1;
+            setsockopt(pair[0], SOL_SOCKET, SO_NOSIGPIPE,
+                       &noSigPipe, sizeof(noSigPipe));
+            setsockopt(pair[1], SOL_SOCKET, SO_NOSIGPIPE,
+                       &noSigPipe, sizeof(noSigPipe));
+
+            self.clientFd = pair[0];
+            self.listenFd = -1;
+            self.ipcPort = 0;
+            iPlayCarPlayServiceSetAppSocket(pair[1]); /* transfers service-end ownership */
+
+            __sync_add_and_fetch(&g_touch_epoch, 1);
+            g_touch_fd = pair[0];
+            ip_log("IPC ready via in-process socketpair appFd=%d serviceFd=%d",
+                   pair[0], pair[1]);
+
+            int appFd = pair[0];
+            dispatch_async(
+                dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                [self ipcHandleConnection:appFd];
+                BOOL ownsAppFd = (self.clientFd == appFd);
+                if (ownsAppFd) {
+                    self.clientFd = -1;
+                    close(appFd);
+                }
+                g_touch_fd = -1;
+                __sync_add_and_fetch(&g_touch_epoch, 1);
+                ip_log("in-process IPC disconnected");
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self endAWDLSuppression];
+                });
+                if (self.state == StateActive ||
+                    self.state == StateAwaitingPhone) {
+                    [self stopFlow];
+                }
+            });
+            return YES;
+        }
+
+        int pairErrno = errno;
+        ip_log("IPC socketpair failed errno=%d %s; trying 127.0.0.1 fallback",
+               pairErrno, strerror(pairErrno));
+
+        /*
+         * Fallback: loopback TCP on an OS-assigned ephemeral port.
+         * Binding explicitly to INADDR_LOOPBACK keeps the channel inside the
+         * app sandbox/process and avoids LAN exposure. This path exists so a
+         * transient socketpair resource failure can never surface as the old
+         * generic 'IPC listener failed' error.
+         */
+        iPlayCarPlayServiceSetAppSocket(-1); /* clear stale service IPC */
+
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) {
+            ip_log("IPC fallback socket(AF_INET) failed errno=%d %s",
+                   errno, strerror(errno));
             return NO;
         }
-        int noSigPipe = 1;
-        setsockopt(pair[0], SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
-        setsockopt(pair[1], SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
 
-        self.clientFd = pair[0];
-        self.listenFd = -1;
-        self.ipcPort = 0;
-        iPlayCarPlayServiceSetAppSocket(pair[1]); /* transfers service-end ownership */
+        int reuse = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-        __sync_add_and_fetch(&g_touch_epoch, 1);
-        g_touch_fd = pair[0];
-        ip_log("IPC ready via in-process socketpair appFd=%d serviceFd=%d",
-               pair[0], pair[1]);
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(0);
 
-        int appFd = pair[0];
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            [self ipcHandleConnection:appFd];
-            BOOL ownsAppFd = (self.clientFd == appFd);
-            if (ownsAppFd) {
-                self.clientFd = -1;
-                close(appFd);
-            }
-            g_touch_fd = -1;
-            __sync_add_and_fetch(&g_touch_epoch, 1);
-            ip_log("in-process IPC disconnected");
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self endAWDLSuppression];
-            });
-            if (self.state == StateActive || self.state == StateAwaitingPhone) {
-                [self stopFlow];
-            }
+        if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+            int bindErrno = errno;
+            ip_log("IPC fallback bind(127.0.0.1:0) failed errno=%d %s",
+                   bindErrno, strerror(bindErrno));
+            close(fd);
+            return NO;
+        }
+        if (listen(fd, 1) != 0) {
+            int listenErrno = errno;
+            ip_log("IPC fallback listen failed errno=%d %s",
+                   listenErrno, strerror(listenErrno));
+            close(fd);
+            return NO;
+        }
+
+        socklen_t addrLen = sizeof(addr);
+        if (getsockname(fd, (struct sockaddr *)&addr, &addrLen) != 0) {
+            int nameErrno = errno;
+            ip_log("IPC fallback getsockname failed errno=%d %s",
+                   nameErrno, strerror(nameErrno));
+            close(fd);
+            return NO;
+        }
+
+        self.listenFd = fd;
+        self.clientFd = -1;
+        self.ipcPort = ntohs(addr.sin_port);
+        if (self.ipcPort == 0) {
+            ip_log("IPC fallback produced invalid ephemeral port 0");
+            close(fd);
+            self.listenFd = -1;
+            return NO;
+        }
+
+        ip_log("IPC fallback listening on 127.0.0.1:%u fd=%d",
+               self.ipcPort, fd);
+        dispatch_async(
+            dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            [self ipcAcceptLoop];
         });
         return YES;
     }
