@@ -96,7 +96,27 @@ for key in runtime_keys:
     if key not in runtime_source:
         raise SystemExit(f"settings key has no runtime consumer outside the UI: {key}")
 
-print("single upstream settings surface and runtime-backed controls verified")
+# Lock the iOS runtime to DiPlay's upstream display defaults. Missing or
+# invalid stored values must resolve to 60 FPS and a 200 mm reference length.
+if not re.search(
+    r"if \(requestedFPS < 30 \|\| requestedFPS > 60\)\s*requestedFPS = 60;",
+    main,
+):
+    raise SystemExit("runtime FPS fallback drifted from upstream default 60 FPS")
+
+if not re.search(
+    r"if \(referencePhysicalMm < 100 \|\| referencePhysicalMm > 400\)\s*referencePhysicalMm = 200;",
+    main,
+):
+    raise SystemExit("runtime physical-length fallback drifted from upstream default 200 mm")
+
+if "static uint16_t g_display_fps = 60;" not in carplay_services:
+    raise SystemExit("receiver FPS default drifted from upstream default 60 FPS")
+
+if "static uint16_t g_display_width_physical_mm = 200;" not in carplay_services:
+    raise SystemExit("receiver physical-length default drifted from upstream default 200 mm")
+
+print("single upstream settings surface, runtime-backed controls, and upstream defaults verified")
 PY
 
 echo "[1/6] Build embedded LocalDevVPN / trusted-RSD core"
