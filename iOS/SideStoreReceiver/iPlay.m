@@ -6780,6 +6780,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     NSArray<NSDictionary *> *sources = @[
         @{@"title": @"APP LOG", @"path": iPlaySandboxLogPath(@"iplay-app.log")},
         @{@"title": @"CARPLAY SERVICE LOG", @"path": iPlaySandboxLogPath(@"iplay-service.log")},
+        @{@"title": @"CARPLAY SERVICE STDOUT/STDERR", @"path": iPlaySandboxLogPath(@"iplay-service-stdio.log")},
         @{@"title": @"LOCALDEVVPN / RSD LOG", @"path": iPlaySandboxLogPath(@"iplay-localdevvpn.log")},
     ];
 
