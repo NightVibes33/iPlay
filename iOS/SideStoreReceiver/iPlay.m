@@ -4511,6 +4511,12 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     [self startRemoteAtoBReceiver:receiver];
                 });
             } else {
+                UIButton *choosePhoneButton =
+                    (UIButton *)[hostController.view viewWithTag:0x49504348];
+                if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
+                    [choosePhoneButton setTitle:@"Choose iPhone · Manual iPlay"
+                                       forState:UIControlStateNormal];
+                }
                 [self renderState];
             }
         }]];
@@ -4630,6 +4636,15 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                             if (connectAfterSelection) {
                                 [self startRemoteAtoBReceiver:receiver];
                             } else {
+                                UIButton *choosePhoneButton =
+                                    (UIButton *)[hostController.view viewWithTag:0x49504348];
+                                if ([choosePhoneButton isKindOfClass:[UIButton class]]) {
+                                    NSString *buttonName =
+                                        name.length ? name : @"iPlay";
+                                    [choosePhoneButton setTitle:
+                                        [NSString stringWithFormat:@"Choose iPhone · %@", buttonName]
+                                                       forState:UIControlStateNormal];
+                                }
                                 [self renderState];
                             }
                         }]];
