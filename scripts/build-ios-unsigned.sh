@@ -146,7 +146,24 @@ if "static uint16_t g_display_fps = 60;" not in carplay_services:
 if "static uint16_t g_display_width_physical_mm = 200;" not in carplay_services:
     raise SystemExit("receiver physical-length default drifted from upstream default 200 mm")
 
-print("single upstream settings surface, runtime-backed controls, and upstream defaults verified")
+if "socketpair(AF_UNIX, SOCK_STREAM, 0, pair)" not in main:
+    raise SystemExit("SideStore direct in-process socketpair IPC is missing")
+if "iPlayCarPlayServiceSetAppSocket(pair[1])" not in main:
+    raise SystemExit("SideStore socketpair service end is not transferred to the receiver")
+if "void iPlayCarPlayServiceSetAppSocket(int fd)" not in carplay_services:
+    raise SystemExit("receiver cannot accept a fresh in-process IPC channel")
+if "IPC listening on 127.0.0.1:" in main:
+    raise SystemExit("obsolete SideStore loopback listener returned")
+
+for source, filename in (
+    (main, "iPlay.m"),
+    (local_carkit, "local_carkit.m"),
+    (carplay_services, "carplay_services.m"),
+):
+    if 'stringByAppendingPathComponent:@"iPlay Logs"' not in source:
+        raise SystemExit(f"Files-visible iPlay Logs path missing from {filename}")
+
+print("single upstream settings surface, runtime-backed controls, defaults, IPC, and Files logs verified")
 PY
 
 echo "[1/6] Build embedded LocalDevVPN / trusted-RSD core"
