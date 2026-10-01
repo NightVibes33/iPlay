@@ -55,6 +55,12 @@
     return stack;
 }
 
+- (UIView *)upstreamSpacer:(CGFloat)height {
+    UIView *spacer = [[UIView alloc] init];
+    [spacer.heightAnchor constraintEqualToConstant:height].active = YES;
+    return spacer;
+}
+
 - (UIView *)upstreamSectionWithTitle:(NSString *)title
                               symbol:(NSString *)symbol
                                stack:(UIStackView **)outStack {
@@ -397,6 +403,7 @@
 
     BOOL wide = UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone &&
                 [self rootContentView].bounds.size.width >= 850.0;
+    UIStackView *body = [self upstreamVerticalStack:0];
     if (wide) {
         UIStackView *top = [[UIStackView alloc] init];
         top.axis = UILayoutConstraintAxisHorizontal;
@@ -405,7 +412,8 @@
         [top addArrangedSubview:hero];
         [top addArrangedSubview:branding];
         [hero.widthAnchor constraintEqualToAnchor:branding.widthAnchor multiplier:1.6].active = YES;
-        [root addArrangedSubview:top];
+        [body addArrangedSubview:top];
+        [body addArrangedSubview:[self upstreamSpacer:26]];
 
         UIStackView *bottom = [[UIStackView alloc] init];
         bottom.axis = UILayoutConstraintAxisHorizontal;
@@ -415,13 +423,17 @@
         [bottom addArrangedSubview:right];
         [self.upstreamWirelessCard.widthAnchor
             constraintEqualToAnchor:right.widthAnchor multiplier:1.6].active = YES;
-        [root addArrangedSubview:bottom];
+        [body addArrangedSubview:bottom];
     } else {
-        [right insertArrangedSubview:branding atIndex:0];
-        [root addArrangedSubview:hero];
-        [root addArrangedSubview:self.upstreamWirelessCard];
-        [root addArrangedSubview:right];
+        [body addArrangedSubview:hero];
+        [body addArrangedSubview:[self upstreamSpacer:26]];
+        [body addArrangedSubview:self.upstreamWirelessCard];
+        [body addArrangedSubview:[self upstreamSpacer:26]];
+        [body addArrangedSubview:branding];
+        [body addArrangedSubview:[self upstreamSpacer:24]];
+        [body addArrangedSubview:right];
     }
+    [root addArrangedSubview:body];
 }
 
 - (void)layoutUpstreamHomeReal {
