@@ -5653,9 +5653,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
            receiverName.UTF8String, (long)self.sideStoreMode,
            manufacturer.UTF8String, modelName.UTF8String, oemLabel.UTF8String);
 
-    if (![self startIPCListener]) { [self failWith:@"IPC listener failed"]; return; }
+    if (![self startIPCListener]) {
+        ip_log("IPC listener failed before CarPlay service launch");
+        [self failWith:@"IPC listener failed"];
+        return;
+    }
 
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
+    char appPortBuf[16];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
     char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     char safeLeftBuf[16], safeTopBuf[16], safeRightBuf[16], safeBottomBuf[16],
@@ -5675,6 +5680,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             ? 2 * 1024 * 1024
             : (display.framesPerSecond <= 30 ? 1024 * 1024 : 512 * 1024);
     snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
+    snprintf(appPortBuf, sizeof(appPortBuf), "%u", self.ipcPort);
     snprintf(widthBuf, sizeof(widthBuf), "%u", displayWidth);
     snprintf(heightBuf, sizeof(heightBuf), "%u", displayHeight);
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
@@ -5789,6 +5795,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         (char*)"--manufacturer", manufacturerBuf,
         (char*)"--model", modelBuf,
         (char*)"--oem-label", oemLabelBuf,
+        (char*)"--app-port", appPortBuf,
         (char*)"--width", widthBuf,
         (char*)"--height", heightBuf,
         (char*)"--fps", fpsBuf,
@@ -5817,6 +5824,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             NSString *manufacturerCopy = [manufacturer copy];
             NSString *modelCopy = [modelName copy];
             NSString *oemLabelCopy = [oemLabel copy];
+            uint16_t appPortCopy = self.ipcPort;
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
@@ -5829,6 +5837,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
+                    char appPortArg[16];
                     char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     char safeLeftArg[16], safeTopArg[16], safeRightArg[16],
@@ -5837,6 +5846,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
                     snprintf(oemLabelArg, sizeof(oemLabelArg), "%s", oemLabelCopy.UTF8String);
+                    snprintf(appPortArg, sizeof(appPortArg), "%u", appPortCopy);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
@@ -5870,6 +5880,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
+                        (char *)"--app-port", appPortArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -5892,6 +5903,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
+                        (char *)"--app-port", appPortArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
