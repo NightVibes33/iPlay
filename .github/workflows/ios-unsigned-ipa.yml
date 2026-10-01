@@ -68,7 +68,6 @@ jobs:
           strings "$BIN" | grep -F "Manufacturer"
           strings "$BIN" | grep -F "2a2a2a2a"
           strings "$BIN" | grep -F "Finding iPlay"
-          strings "$BIN" | grep -F "Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode."
           test -s "$APP/ic_carplay.png"
           test -s "$APP/ic_car_home.png"
 
@@ -81,6 +80,8 @@ jobs:
           grep -F 'iPlayIsStockSideStoreBuild() && self.sideStoreMode == 2' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:NO' \
+            iOS/SideStoreReceiver/iPlay.m
+          grep -F 'Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode.' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'iPlayDiscoverRemoteCarPlayReceivers' \
             iOS/SideStoreReceiver/SideStoreBridge.m
