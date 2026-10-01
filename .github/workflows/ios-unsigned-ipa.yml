@@ -59,6 +59,8 @@ jobs:
           strings "$BIN" | grep -F -- "--height-physical-mm"
           strings "$BIN" | grep -F "Safe area"
           strings "$BIN" | grep -F "Draw outside safe area"
+          strings "$BIN" | grep -F "viewAreas"
+          strings "$BIN" | grep -F "drawUIOutsideSafeArea"
           strings "$BIN" | grep -F -- "--safe-left"
           strings "$BIN" | grep -F "OEM label"
           strings "$BIN" | grep -F "Choose image"
