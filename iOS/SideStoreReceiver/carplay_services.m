@@ -177,7 +177,7 @@ static void parse_args(int argc, char *argv[]) {
                 g_screen_receive_buffer = (int)value;
         } else if (!strcmp(argv[i], "--width-physical-mm") && i + 1 < argc) {
             long value = strtol(argv[++i], NULL, 10);
-            if (value >= 150 && value <= 600)
+            if (value >= 100 && value <= 400)
                 g_display_width_physical_mm = (uint16_t)value;
         } else if (!strcmp(argv[i], "--right-hand-drive") && i + 1 < argc) {
             g_right_hand_drive = strtol(argv[++i], NULL, 10) != 0;
