@@ -143,6 +143,7 @@ static uint16_t g_display_height = 480;
 static uint16_t g_display_fps = 60;
 static uint16_t g_display_width_physical_mm = 300;
 static bool g_right_hand_drive = false;
+static bool g_hevc_enabled = false;
 static int g_screen_receive_buffer = 512 * 1024;
 static bool g_baa_broker_mode = false;
 /* Same-device SideStore mode. The source is Apple's wired CarPlay simulator
@@ -180,6 +181,8 @@ static void parse_args(int argc, char *argv[]) {
                 g_display_width_physical_mm = (uint16_t)value;
         } else if (!strcmp(argv[i], "--right-hand-drive") && i + 1 < argc) {
             g_right_hand_drive = strtol(argv[++i], NULL, 10) != 0;
+        } else if (!strcmp(argv[i], "--hevc") && i + 1 < argc) {
+            g_hevc_enabled = strtol(argv[++i], NULL, 10) != 0;
         } else if (!strcmp(argv[i], "--baa-broker")) {
             g_baa_broker_mode = true;
         } else if (!strcmp(argv[i], "--local-simulator")) {
@@ -1141,6 +1144,10 @@ static void handle_info(int sock, const HTTPReq *r) {
         display[@"primaryInputDevice"] = @(1);  /* 1=touchscreen */
         display[@"overscanned"] = @NO;
         info[@"displays"] = @[display];
+        if (g_hevc_enabled) {
+            /* Presence of hevcInfo is the CarPlay/AirPlay capability signal. */
+            info[@"hevcInfo"] = @{};
+        }
 
         /*
          * CarPlaySDK builds different audio tables for wired and wireless
@@ -6161,10 +6168,11 @@ int main(int argc, char *argv[]) {
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
     printf("[SVC] RAOP name: %s\n", g_raop_name);
-    printf("[SVC] Display:   %ux%u @ %u FPS, physical=%umm, RHD=%s\n",
+    printf("[SVC] Display:   %ux%u @ %u FPS, physical=%umm, RHD=%s, codec=%s\n",
            g_display_width, g_display_height, g_display_fps,
            g_display_width_physical_mm,
-           g_right_hand_drive ? "YES" : "NO");
+           g_right_hand_drive ? "YES" : "NO",
+           g_hevc_enabled ? "HEVC" : "H.264");
     printf("[SVC] pi:        %s\n", HK_PI);
     printf("[SVC] pk:        %s\n", HK_PK);
     printf("[SVC] Ed25519:   REAL keypair (sk stored for pair-verify)\n");
