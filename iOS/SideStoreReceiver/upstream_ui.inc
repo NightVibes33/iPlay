@@ -374,7 +374,7 @@
     [right addArrangedSubview:self.upstreamSettingsHintLabel];
 
     self.upstreamPreviewLabel =
-        [self upstreamLabel:@"PUBLIC PREVIEW  ·  0.1"
+        [self upstreamLabel:[NSString stringWithFormat:@"PUBLIC PREVIEW  ·  %s", APP_VERSION]
                        size:12 color:[self upstreamMutedColor] bold:NO];
     self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
     [right addArrangedSubview:self.upstreamPreviewLabel];
@@ -577,7 +577,8 @@
                                             bold:NO]];
 
     UIStackView *previewStack = nil;
-    UIView *preview = [self upstreamSectionWithTitle:@"Public preview · 0.1"
+    UIView *preview = [self upstreamSectionWithTitle:
+        [NSString stringWithFormat:@"Public preview · %s", APP_VERSION]
                                               symbol:@"car"
                                                stack:&previewStack];
     [previewStack addArrangedSubview:[self upstreamLabel:
