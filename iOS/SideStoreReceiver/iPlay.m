@@ -2832,7 +2832,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayLastMode"];
         self.sideStoreMode = (savedMode == 1) ? 1 : 0;
         ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
-        if ([settingsDefaults boolForKey:@"iPlayAutoConnect"]) {
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
             ip_log("[SIDESTORE] Auto Connect scheduled for saved mode=%ld",
                    (long)self.sideStoreMode);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
@@ -2945,7 +2945,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     }
     if (self.state == StateAwaitingAP) [self pollAP];
     if (self.state == StateIdle &&
-        [settingsDefaults boolForKey:@"iPlayAutoForeground"]) {
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoForeground"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                      (int64_t)(0.35 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
