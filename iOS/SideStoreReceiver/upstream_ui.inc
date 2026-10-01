@@ -752,21 +752,6 @@
     }];
     [root addArrangedSubview:audio];
 
-    UIStackView *locationStack = nil;
-    UIView *location = [self upstreamSectionWithTitle:@"Location"
-                                               symbol:@"location"
-                                                stack:&locationStack];
-    [self upstreamAddToggleTo:locationStack
-                        title:@"Report location to iPhone"
-                  description:@"A → A only. Advertise iAP2 LocationInformation and send this iPhone’s live GPS fix to CarPlay."
-                        value:[defaults boolForKey:@"iPlayLocationReport"]
-                      changed:^(BOOL value) {
-        [defaults setBool:value forKey:@"iPlayLocationReport"];
-        if (self.state == StateActive || self.state == StateAwaitingPhone)
-            [self upstreamReconnectCurrentMode];
-    }];
-    [root addArrangedSubview:location];
-
     UIStackView *permissionsStack = nil;
     UIView *permissions = [self upstreamSectionWithTitle:@"Permissions and connection help"
                                                   symbol:@"lock.shield"
