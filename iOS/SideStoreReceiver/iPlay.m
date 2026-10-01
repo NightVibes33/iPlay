@@ -4225,13 +4225,22 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     NSString *svcPath = [bundlePath stringByAppendingPathComponent:@SVC_HELPER_NAME];
     Car *sel = self.cars.selected;
     NSString *receiverName = sel.name ?: @"iPlay";
-    ip_log("bgPrepareNet: receiver='%s' mode=%ld",
-           receiverName.UTF8String, (long)self.sideStoreMode);
+    NSUserDefaults *runtimeDefaults = [NSUserDefaults standardUserDefaults];
+    NSString *manufacturer = [runtimeDefaults stringForKey:@"iPlayManufacturer"];
+    NSString *modelName = [runtimeDefaults stringForKey:@"iPlayModel"];
+    NSString *oemLabel = [runtimeDefaults stringForKey:@"iPlayOEMLabel"];
+    if (manufacturer.length == 0) manufacturer = @"DiPlay";
+    if (modelName.length == 0) modelName = @"DiPlay";
+    if (oemLabel.length == 0) oemLabel = @"BYD";
+    ip_log("bgPrepareNet: receiver='%s' mode=%ld identity='%s/%s/%s'",
+           receiverName.UTF8String, (long)self.sideStoreMode,
+           manufacturer.UTF8String, modelName.UTF8String, oemLabel.UTF8String);
 
     if (![self startIPCListener]) { [self failWith:@"IPC listener failed"]; return; }
 
-    char nameBuf[64];
+    char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
+    char widthPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     CarPlayDisplayProfile display = preferred_carplay_display_profile();
     uint16_t displayWidth = display.width;
     uint16_t displayHeight = display.height;
@@ -4246,7 +4255,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         display.wlanAttachment == CarPlayWLANAttachmentHSIC
             ? 2 * 1024 * 1024
             : (display.framesPerSecond <= 30 ? 1024 * 1024 : 512 * 1024);
-    snprintf(nameBuf, sizeof(nameBuf), "%s", [sel.name UTF8String]);
+    snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
     snprintf(widthBuf, sizeof(widthBuf), "%u", displayWidth);
     snprintf(heightBuf, sizeof(heightBuf), "%u", displayHeight);
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
@@ -4259,7 +4268,14 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     widthPhysicalMm = 100 + (NSInteger)llround((widthPhysicalMm - 100) / 50.0) * 50;
     widthPhysicalMm = MAX(100, MIN(400, widthPhysicalMm));
     BOOL rightHandDrive =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
+        [runtimeDefaults boolForKey:@"iPlayRightHandDrive"];
+    BOOL hevcEnabled = [runtimeDefaults boolForKey:@"iPlayHEVC"];
+    snprintf(manufacturerBuf, sizeof(manufacturerBuf), "%s", manufacturer.UTF8String);
+    snprintf(modelBuf, sizeof(modelBuf), "%s", modelName.UTF8String);
+    snprintf(oemLabelBuf, sizeof(oemLabelBuf), "%s", oemLabel.UTF8String);
+    snprintf(widthPhysicalBuf, sizeof(widthPhysicalBuf), "%ld", (long)widthPhysicalMm);
+    snprintf(rightHandDriveBuf, sizeof(rightHandDriveBuf), "%d", rightHandDrive ? 1 : 0);
+    snprintf(hevcBuf, sizeof(hevcBuf), "%d", hevcEnabled ? 1 : 0);
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
            "budget=%llu pixels selected=%ux%u@%u wlan=%s rcvbuf=%d "
            "policy=hardware-only layout=ignored",
@@ -4273,10 +4289,16 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     char *svcArgv[] = {
         (char*)SVC_HELPER_NAME,
         (char*)"--name", nameBuf,
+        (char*)"--manufacturer", manufacturerBuf,
+        (char*)"--model", modelBuf,
+        (char*)"--oem-label", oemLabelBuf,
         (char*)"--width", widthBuf,
         (char*)"--height", heightBuf,
         (char*)"--fps", fpsBuf,
         (char*)"--screen-rcvbuf", receiveBufferBuf,
+        (char*)"--width-physical-mm", widthPhysicalBuf,
+        (char*)"--right-hand-drive", rightHandDriveBuf,
+        (char*)"--hevc", hevcBuf,
         NULL
     };
     /*
@@ -4289,17 +4311,23 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         if (!self.inProcessServiceStarted) {
             self.inProcessServiceStarted = YES;
             NSString *nameCopy = [receiverName copy];
+            NSString *manufacturerCopy = [manufacturer copy];
+            NSString *modelCopy = [modelName copy];
+            NSString *oemLabelCopy = [oemLabel copy];
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
             BOOL rightHandDriveCopy = rightHandDrive;
-            BOOL hevcEnabledCopy =
-                [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayHEVC"];
+            BOOL hevcEnabledCopy = hevcEnabled;
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
-                    char nameArg[64], widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
+                    char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
+                    char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
+                    snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
+                    snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
+                    snprintf(oemLabelArg, sizeof(oemLabelArg), "%s", oemLabelCopy.UTF8String);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
@@ -4322,6 +4350,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     char *argsTrusted[] = {
                         (char *)"iPlay-CarPlay-Service",
                         (char *)"--name", nameArg,
+                        (char *)"--manufacturer", manufacturerArg,
+                        (char *)"--model", modelArg,
+                        (char *)"--oem-label", oemLabelArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -4335,6 +4366,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     char *argsNormal[] = {
                         (char *)"iPlay-CarPlay-Service",
                         (char *)"--name", nameArg,
+                        (char *)"--manufacturer", manufacturerArg,
+                        (char *)"--model", modelArg,
+                        (char *)"--oem-label", oemLabelArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -4346,7 +4380,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 18 : 17,
+                        trustedAtoA ? 24 : 23,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
