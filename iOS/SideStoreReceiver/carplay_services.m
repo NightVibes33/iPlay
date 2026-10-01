@@ -1098,7 +1098,7 @@ static void handle_info(int sock, const HTTPReq *r) {
                 stringByAppendingPathComponent:@"airplay-icon.png"];
         NSArray<NSString *> *oemIconPaths = @[
             customAirPlayIcon ?: @"",
-            [[NSBundle mainBundle] pathForResource:@"ic_carplay"
+            [[NSBundle mainBundle] pathForResource:@"ic_car_home"
                                             ofType:@"png"] ?: @"",
             [[NSBundle mainBundle] pathForResource:@"Icon-OEM-104"
                                             ofType:@"png"] ?: @"",
@@ -1125,7 +1125,7 @@ static void handle_info(int sock, const HTTPReq *r) {
         }
         NSArray<NSString *> *oemRenderedIconPaths = @[
             customAirPlayIcon ?: @"",
-            [[NSBundle mainBundle] pathForResource:@"ic_carplay"
+            [[NSBundle mainBundle] pathForResource:@"ic_car_home"
                                             ofType:@"png"] ?: @"",
             [[NSBundle mainBundle] pathForResource:@"Icon-OEM-120"
                                             ofType:@"png"] ?: @"",
