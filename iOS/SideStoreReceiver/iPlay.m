@@ -524,6 +524,92 @@ static void video_clock_reset(void) {
     g_video_frame_interval = 1.0 / 60.0;
 }
 
+static CMVideoFormatDescriptionRef
+iPlayCreateVideoFormatDescription(const uint8_t *config,
+                                  size_t configLength,
+                                  BOOL *outHEVC) {
+    if (outHEVC) *outHEVC = NO;
+    if (!config || configLength < 7) return NULL;
+
+    /* AVCDecoderConfigurationRecord (avcC). */
+    {
+        size_t off = 5;
+        const uint8_t *ps[2] = {NULL, NULL};
+        size_t psSize[2] = {0, 0};
+        int nSPS = config[off] & 0x1F;
+        off++;
+        if (nSPS > 0 && off + 2 <= configLength) {
+            uint16_t length = ((uint16_t)config[off] << 8) | config[off + 1];
+            off += 2;
+            if (off + length <= configLength) {
+                ps[0] = config + off;
+                psSize[0] = length;
+                off += length;
+            }
+        }
+        if (off < configLength) {
+            int nPPS = config[off++];
+            if (nPPS > 0 && off + 2 <= configLength) {
+                uint16_t length = ((uint16_t)config[off] << 8) | config[off + 1];
+                off += 2;
+                if (off + length <= configLength) {
+                    ps[1] = config + off;
+                    psSize[1] = length;
+                }
+            }
+        }
+        if (ps[0] && ps[1]) {
+            CMVideoFormatDescriptionRef desc = NULL;
+            OSStatus status =
+                CMVideoFormatDescriptionCreateFromH264ParameterSets(
+                    NULL, 2, ps, psSize, 4, &desc);
+            if (status == noErr && desc) return desc;
+            if (desc) CFRelease(desc);
+        }
+    }
+
+    /* HEVCDecoderConfigurationRecord (hvcC). */
+    if (configLength >= 23) {
+        const uint8_t *sets[3] = {NULL, NULL, NULL}; /* VPS, SPS, PPS */
+        size_t sizes[3] = {0, 0, 0};
+        size_t off = 23;
+        uint8_t arrayCount = config[22];
+        for (uint8_t arrayIndex = 0;
+             arrayIndex < arrayCount && off + 3 <= configLength;
+             arrayIndex++) {
+            uint8_t nalType = config[off] & 0x3F;
+            off++;
+            uint16_t nalCount =
+                ((uint16_t)config[off] << 8) | config[off + 1];
+            off += 2;
+            for (uint16_t n = 0; n < nalCount && off + 2 <= configLength; n++) {
+                uint16_t length =
+                    ((uint16_t)config[off] << 8) | config[off + 1];
+                off += 2;
+                if (off + length > configLength) return NULL;
+                int slot = nalType == 32 ? 0 : (nalType == 33 ? 1 : (nalType == 34 ? 2 : -1));
+                if (slot >= 0 && !sets[slot]) {
+                    sets[slot] = config + off;
+                    sizes[slot] = length;
+                }
+                off += length;
+            }
+        }
+        if (sets[0] && sets[1] && sets[2]) {
+            CMVideoFormatDescriptionRef desc = NULL;
+            OSStatus status =
+                CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+                    NULL, 3, sets, sizes, 4, NULL, &desc);
+            if (status == noErr && desc) {
+                if (outHEVC) *outHEVC = YES;
+                return desc;
+            }
+            if (desc) CFRelease(desc);
+        }
+    }
+    return NULL;
+}
+
 /* Computes the presentation host time for a frame. outMissedSlot reports that
  * the frame's own slot had already passed, i.e. transport exceeded the budget,
  * and outLatenessSeconds by how much.
@@ -4030,10 +4116,12 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
             BOOL rightHandDriveCopy = rightHandDrive;
+            BOOL hevcEnabledCopy =
+                [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayHEVC"];
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
-                    char widthPhysicalArg[16], rightHandDriveArg[8];
+                    char widthPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     snprintf(nameArg, sizeof(nameArg), "%s", nameCopy.UTF8String);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
@@ -4043,6 +4131,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                              (long)widthPhysicalCopy);
                     snprintf(rightHandDriveArg, sizeof(rightHandDriveArg), "%d",
                              rightHandDriveCopy ? 1 : 0);
+                    snprintf(hevcArg, sizeof(hevcArg), "%d",
+                             hevcEnabledCopy ? 1 : 0);
                     /*
                      * A->A runs over an already trusted Remote-Pairing/RSD
                      * CarKit relationship. Do not advertise AirPlay MFi-SAP
@@ -4061,6 +4151,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--screen-rcvbuf", bufferArg,
                         (char *)"--width-physical-mm", widthPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
+                        (char *)"--hevc", hevcArg,
                         (char *)"--local-simulator",
                         NULL
                     };
@@ -4073,11 +4164,12 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--screen-rcvbuf", bufferArg,
                         (char *)"--width-physical-mm", widthPhysicalArg,
                         (char *)"--right-hand-drive", rightHandDriveArg,
+                        (char *)"--hevc", hevcArg,
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 16 : 15,
+                        trustedAtoA ? 18 : 17,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
@@ -5122,42 +5214,35 @@ static bool read_exact(int fd, uint8_t *buf, size_t len) {
             g_carplay_w = w; g_carplay_h = h;
             ip_log("VideoConfig: %.0fx%.0f", w, h);
 
-            const uint8_t *avcc = payload + 8;
-            size_t avccLen = len - 8;
-            if (avccLen >= 7) {
-                size_t off = 5;
-                const uint8_t *ps[2] = {NULL, NULL};
-                size_t psSize[2] = {0, 0};
-                int nSPS = avcc[off] & 0x1F; off++;
-                if (nSPS > 0 && off + 2 <= avccLen) {
-                    uint16_t sLen = (avcc[off]<<8) | avcc[off+1]; off += 2;
-                    if (off + sLen <= avccLen) { ps[0] = avcc + off; psSize[0] = sLen; off += sLen; }
-                }
-                if (off < avccLen) {
-                    int nPPS = avcc[off]; off++;
-                    if (nPPS > 0 && off + 2 <= avccLen) {
-                        uint16_t pLen = (avcc[off]<<8) | avcc[off+1]; off += 2;
-                        if (off + pLen <= avccLen) { ps[1] = avcc + off; psSize[1] = pLen; }
-                    }
-                }
-                if (ps[0] && ps[1]) {
-                    if (fmtDesc) { CFRelease(fmtDesc); fmtDesc = NULL; }
-                    CMVideoFormatDescriptionCreateFromH264ParameterSets(NULL, 2, ps, psSize, 4, &fmtDesc);
-                    /* A new parameter set means a new stream; the previous
-                     * sender-timeline offset no longer describes it. */
-                    video_clock_reset();
-                    dispatch_async(self.videoQueue, ^{
-                        AVSampleBufferDisplayLayer *layer = (AVSampleBufferDisplayLayer *)self.videoView.layer;
-                        [layer flush];
-                        if (g_video_respect_timestamps)
-                            video_install_timebase(layer);
-                        else
-                            layer.controlTimebase = NULL;
-                    });
-                    gotFirstFrame = false;
-                    g_video_needs_resync = 1;
-                    previousSenderTimestamp = 0;
-                }
+            const uint8_t *codecConfig = payload + 8;
+            size_t codecConfigLength = len - 8;
+            BOOL usingHEVC = NO;
+            CMVideoFormatDescriptionRef nextFormat =
+                iPlayCreateVideoFormatDescription(codecConfig,
+                                                  codecConfigLength,
+                                                  &usingHEVC);
+            if (nextFormat) {
+                if (fmtDesc) CFRelease(fmtDesc);
+                fmtDesc = nextFormat;
+                ip_log("VideoConfig codec=%s bytes=%zu",
+                       usingHEVC ? "HEVC" : "H.264",
+                       codecConfigLength);
+                video_clock_reset();
+                dispatch_async(self.videoQueue, ^{
+                    AVSampleBufferDisplayLayer *layer =
+                        (AVSampleBufferDisplayLayer *)self.videoView.layer;
+                    [layer flush];
+                    if (g_video_respect_timestamps)
+                        video_install_timebase(layer);
+                    else
+                        layer.controlTimebase = NULL;
+                });
+                gotFirstFrame = false;
+                g_video_needs_resync = 1;
+                previousSenderTimestamp = 0;
+            } else {
+                ip_log("VideoConfig unsupported codec configuration bytes=%zu",
+                       codecConfigLength);
             }
             free(payload);
 
