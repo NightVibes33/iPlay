@@ -191,7 +191,7 @@
                        reconnects:(BOOL)reconnects {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSInteger value = [defaults objectForKey:key] ? [defaults integerForKey:key] : defaultValue;
-    NSInteger selected = [values indexOfObject:@(value)];
+    __block NSInteger selected = [values indexOfObject:@(value)];
     if (selected == NSNotFound) selected = 0;
 
     UIButton *button = [self upstreamButtonWithTitle:
@@ -213,8 +213,9 @@
                 pending = index;
                 NSNumber *saved = values[pending];
                 [defaults setInteger:saved.integerValue forKey:key];
+                selected = pending;
                 [weakButton setTitle:
-                    [NSString stringWithFormat:@"%@ · %@", title, options[pending]]
+                    [NSString stringWithFormat:@"%@ · %@", title, options[selected]]
                               forState:UIControlStateNormal];
                 if (reconnects &&
                     (self.state == StateActive ||
