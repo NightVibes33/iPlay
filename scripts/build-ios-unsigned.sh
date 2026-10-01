@@ -20,13 +20,16 @@ mkdir -p "$OUT/Payload/iPlay.app"
 COMMON=(-target "$TARGET" -isysroot "$SDK" -miphoneos-version-min=16.0 -O2)
 
 echo "[0/6] Verify single upstream settings surface"
-python3 - "$SRC/iPlay.m" "$SRC/upstream_ui.inc" <<'PY'
+python3 - "$SRC/iPlay.m" "$SRC/upstream_ui.inc" "$SRC/local_carkit.m" "$SRC/carplay_services.m" "$SRC/SideStoreBridge.m" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 main = Path(sys.argv[1]).read_text()
 home = Path(sys.argv[2]).read_text()
+local_carkit = Path(sys.argv[3]).read_text()
+carplay_services = Path(sys.argv[4]).read_text()
+sidestore_bridge = Path(sys.argv[5]).read_text()
 
 definitions = re.findall(r"(?m)^- \(void\)showUpstreamSettings\s*\{", main)
 if len(definitions) != 1:
@@ -62,7 +65,38 @@ for entry in ("tertiaryTapped", "toggleChrome:"):
 if main.count('#include "upstream_ui.inc"') != 1:
     raise SystemExit("upstream_ui.inc must be included exactly once")
 
-print("single upstream settings surface verified")
+settings_start = main.find("- (void)showUpstreamSettings {")
+settings_end = main.find('#include "upstream_ui.inc"', settings_start)
+if settings_start < 0 or settings_end <= settings_start:
+    raise SystemExit("unable to isolate shared settings implementation")
+settings_body = main[settings_start:settings_end]
+runtime_source = (
+    main[:settings_start] + main[settings_end:] +
+    local_carkit + carplay_services + sidestore_bridge
+)
+
+if re.search(r"\.enabled\s*=\s*NO|setEnabled\s*:\s*NO|action\s*:\s*nil", settings_body):
+    raise SystemExit("shared settings contains a disabled or nil-action placeholder control")
+
+runtime_keys = (
+    "iPlayAutoConnect", "iPlayAutoForeground",
+    "iPlayPhysicalWidthMm", "iPlayPhysicalSizeBasis",
+    "iPlayDisplayScaleTenths", "iPlayFrameRate", "iPlayMusicBufferMs",
+    "iPlayHEVC", "iPlayRightHandDrive", "iPlayFullScreen",
+    "iPlayAudioFocus", "iPlayLocationReport", "iPlayDebugLogs",
+    "iPlayManufacturer", "iPlayModel", "iPlayOEMLabel",
+    "iPlaySafeLeftPm", "iPlaySafeTopPm", "iPlaySafeRightPm",
+    "iPlaySafeBottomPm", "iPlaySafeDrawOutside",
+    "iPlayRemoteReceiverName", "iPlayRemoteReceiverHost",
+    "iPlayRemoteReceiverPort",
+)
+for key in runtime_keys:
+    if key not in settings_body:
+        raise SystemExit(f"expected real settings control/key is missing from shared surface: {key}")
+    if key not in runtime_source:
+        raise SystemExit(f"settings key has no runtime consumer outside the UI: {key}")
+
+print("single upstream settings surface and runtime-backed controls verified")
 PY
 
 echo "[1/6] Build embedded LocalDevVPN / trusted-RSD core"
