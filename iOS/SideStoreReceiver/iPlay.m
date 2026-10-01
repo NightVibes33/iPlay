@@ -3735,31 +3735,20 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [iconRow addArrangedSubview:iconActions];
     [identityStack addArrangedSubview:iconRow];
     [identityStack setCustomSpacing:26 afterView:iconRow];
-    UIStackView *rhdRow = [[UIStackView alloc] init];
-    rhdRow.axis = UILayoutConstraintAxisHorizontal;
-    rhdRow.alignment = UIStackViewAlignmentCenter;
-    rhdRow.spacing = 16;
-    UIStackView *rhdText = [[UIStackView alloc] init];
-    rhdText.axis = UILayoutConstraintAxisVertical;
-    rhdText.spacing = 5;
-    [rhdText addArrangedSubview:[self upstreamLabel:@"Right-hand drive"
-                                              size:20 color:SECONDARY bold:NO]];
-    [rhdText addArrangedSubview:[self upstreamLabel:
-        @"Report right-hand-drive layout so CarPlay places driver-side controls correctly."
-        size:14 color:SECONDARY bold:NO]];
-    [rhdRow addArrangedSubview:rhdText];
-    UISwitch *rhdSwitch = [[UISwitch alloc] init];
-    rhdSwitch.onTintColor = ACCENT_TRACK;
-    rhdSwitch.on =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
-    __weak UISwitch *weakRhdSwitch = rhdSwitch;
-    [rhdSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+    [identityStack addArrangedSubview:
+        [self upstreamLabel:@"Driving side" size:20 color:SECONDARY bold:NO]];
+    UISegmentedControl *drivingSide = [[UISegmentedControl alloc]
+        initWithItems:@[@"Left-hand drive", @"Right-hand drive"]];
+    drivingSide.selectedSegmentIndex =
+        [settingsDefaults boolForKey:@"iPlayRightHandDrive"] ? 1 : 0;
+    drivingSide.selectedSegmentTintColor = ACCENT;
+    __weak UISegmentedControl *weakDrivingSide = drivingSide;
+    [drivingSide addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [[NSUserDefaults standardUserDefaults]
-            setBool:weakRhdSwitch.isOn forKey:@"iPlayRightHandDrive"];
+        [settingsDefaults setBool:(weakDrivingSide.selectedSegmentIndex == 1)
+                           forKey:@"iPlayRightHandDrive"];
     }] forControlEvents:UIControlEventValueChanged];
-    [rhdRow addArrangedSubview:rhdSwitch];
-    [identityStack addArrangedSubview:rhdRow];
+    [identityStack addArrangedSubview:drivingSide];
 
     [identityStack addArrangedSubview:[self upstreamLabel:
         @"Manufacturer, model, OEM label and the square AirPlay icon are published by the real receiver after Save and reconnect."
@@ -4341,7 +4330,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     wirePreview(resolutionSlider, UIControlEventValueChanged);
     wirePreview(fpsSlider, UIControlEventValueChanged);
     wirePreview(hevcSwitch, UIControlEventValueChanged);
-    wirePreview(rhdSwitch, UIControlEventValueChanged);
+    wirePreview(drivingSide, UIControlEventValueChanged);
     wirePreview(fullSwitch, UIControlEventValueChanged);
     wirePreview(locationSwitch, UIControlEventValueChanged);
     wirePreview(drawOutsideSwitch, UIControlEventValueChanged);
