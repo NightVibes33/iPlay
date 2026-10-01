@@ -593,7 +593,7 @@
                                            color:[self upstreamTextColor]
                                             bold:YES]];
     [root addArrangedSubview:[self upstreamLabel:
-        @"Apply reconnects CarPlay for size, resolution, music buffer and frame rate. Other changes apply to your next connection."
+        @"Display, audio and location changes apply to your next CarPlay connection."
                                             size:17
                                            color:[self upstreamMutedColor]
                                             bold:NO]];
@@ -660,7 +660,7 @@
                        values:@[@100, @150, @200, @250, @300, @350, @400]
                    currentKey:@"iPlayPhysicalWidthMm"
                  defaultValue:200
-                   reconnects:YES];
+                   reconnects:NO];
     [displayStack addArrangedSubview:[self upstreamLabel:
         @"Changes the size of CarPlay icons and text by changing the physical display width reported to the iPhone."
                                             size:14
@@ -673,7 +673,7 @@
                        values:@[@3, @4, @5, @6, @7, @8, @9, @10]
                    currentKey:@"iPlayDisplayScaleTenths"
                  defaultValue:10
-                   reconnects:YES];
+                   reconnects:NO];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Music buffer"
@@ -681,7 +681,7 @@
                        values:@[@300, @500, @1000]
                    currentKey:@"iPlayMusicBufferMs"
                  defaultValue:300
-                   reconnects:YES];
+                   reconnects:NO];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Frame rate"
@@ -689,7 +689,7 @@
                        values:@[@30, @35, @40, @45, @50, @55, @60]
                    currentKey:@"iPlayFrameRate"
                  defaultValue:60
-                   reconnects:YES];
+                   reconnects:NO];
 
     [self upstreamAddToggleTo:displayStack
                         title:@"Efficient video"
@@ -697,8 +697,6 @@
                         value:[defaults boolForKey:@"iPlayHEVC"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayHEVC"];
-        if (self.state == StateActive || self.state == StateAwaitingPhone)
-            [self upstreamReconnectCurrentMode];
     }];
 
     [self upstreamAddToggleTo:displayStack
@@ -707,8 +705,6 @@
                         value:[defaults boolForKey:@"iPlayRightHandDrive"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayRightHandDrive"];
-        if (self.state == StateActive || self.state == StateAwaitingPhone)
-            [self upstreamReconnectCurrentMode];
     }];
 
     if ([defaults objectForKey:@"iPlayFullScreen"] == nil)
@@ -719,11 +715,6 @@
                         value:[defaults boolForKey:@"iPlayFullScreen"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayFullScreen"];
-        if (self.state == StateActive && [self isPhone]) {
-            self.vc.fullscreenMode = value;
-            [self.vc.view setNeedsLayout];
-            [self.vc.view layoutIfNeeded];
-        }
     }];
     [root addArrangedSubview:display];
 
@@ -752,8 +743,6 @@
                         value:[defaults boolForKey:@"iPlayLocationReport"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayLocationReport"];
-        if (self.state == StateActive || self.state == StateAwaitingPhone)
-            [self upstreamReconnectCurrentMode];
     }];
     [root addArrangedSubview:location];
 
