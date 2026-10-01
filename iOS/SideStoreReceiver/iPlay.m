@@ -6166,8 +6166,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [report appendFormat:@"State: %ld\n", (long)self.state];
     [report appendFormat:@"Mode: %ld (0=A->A, 1=Receive A->B, 2=Send A->B)\n",
                          (long)self.sideStoreMode];
-    [report appendFormat:@"IPC: clientFd=%d listenFd=%d port=%u\n",
-                         self.clientFd, self.listenFd, self.ipcPort];
+    NSString *ipcTransport =
+        self.clientFd >= 0 && self.ipcPort == 0 ? @"in-process socketpair" :
+        (self.listenFd >= 0 && self.ipcPort != 0 ? @"127.0.0.1 loopback" :
+         @"not active");
+    [report appendFormat:@"IPC: transport=%@ clientFd=%d listenFd=%d port=%u\n",
+                         ipcTransport, self.clientFd, self.listenFd, self.ipcPort];
+    [report appendFormat:@"IPC setup detail: %@\n",
+                         self.lastIPCError.length ? self.lastIPCError : @"none"];
     [report appendString:
         @"\nFull persistent logs are stored beside this file in iPlay Logs.\n"];
 
