@@ -2700,7 +2700,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 @class CarsViewController;
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate, PHPickerViewControllerDelegate>
+@interface AppDelegate : UIResponder <UIApplicationDelegate, PHPickerViewControllerDelegate, CLLocationManagerDelegate>
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) RootViewController *vc;
 @property (nonatomic, strong) VideoView *videoView;
@@ -2737,11 +2737,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) ThreeFingerSwipeDownGestureRecognizer *controlsGesture;
 @property (nonatomic, strong) UITextView *debugOverlayView;
 @property (nonatomic, strong) NSTimer *debugOverlayTimer;
+@property (nonatomic, strong) CLLocationManager *settingsLocationManager;
 
 /* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
 - (void)buildUpstreamHomeReal;
 - (void)layoutUpstreamHomeReal;
 - (void)showUpstreamSettingsReal;
+- (BOOL)requestCarPlayLocationPermissionIfNeeded;
 - (void)startRemoteAtoB;
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection;
@@ -2815,6 +2817,80 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (UIView *)rootContentView {
     return self.vc.contentView ?: self.vc.view;
+}
+
+- (CLAuthorizationStatus)currentCarPlayLocationAuthorizationStatus {
+    if (@available(iOS 14.0, *)) {
+        if (self.settingsLocationManager)
+            return self.settingsLocationManager.authorizationStatus;
+    }
+    return [CLLocationManager authorizationStatus];
+}
+
+- (void)showCarPlayLocationPermissionHelp {
+    UIViewController *presenter = [self topPresenter];
+    if (!presenter.presentedViewController ||
+        ![presenter.presentedViewController isKindOfClass:[UIAlertController class]]) {
+        UIAlertController *alert =
+            [UIAlertController alertControllerWithTitle:@"Location permission needed"
+                message:@"Enable Location for iPlay in iOS Settings to report this iPhone’s position to CarPlay."
+                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+            style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Open Settings"
+            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+                NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+                if (url) [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+            }]];
+        [presenter presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+- (BOOL)requestCarPlayLocationPermissionIfNeeded {
+    if (![CLLocationManager locationServicesEnabled]) {
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
+        [self showCarPlayLocationPermissionHelp];
+        return NO;
+    }
+
+    if (!self.settingsLocationManager) {
+        self.settingsLocationManager = [[CLLocationManager alloc] init];
+        self.settingsLocationManager.delegate = self;
+        self.settingsLocationManager.desiredAccuracy = kCLLocationAccuracyBest;
+    }
+
+    CLAuthorizationStatus status = [self currentCarPlayLocationAuthorizationStatus];
+    if (status == kCLAuthorizationStatusNotDetermined) {
+        [self.settingsLocationManager requestWhenInUseAuthorization];
+        return YES;
+    }
+    if (status == kCLAuthorizationStatusDenied ||
+        status == kCLAuthorizationStatusRestricted) {
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
+        [self showCarPlayLocationPermissionHelp];
+        return NO;
+    }
+    return YES;
+}
+
+- (void)handleCarPlayLocationAuthorizationStatus:(CLAuthorizationStatus)status {
+    if (status == kCLAuthorizationStatusDenied ||
+        status == kCLAuthorizationStatusRestricted) {
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayLocationReport"]) {
+            [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"iPlayLocationReport"];
+            [self showCarPlayLocationPermissionHelp];
+        }
+    }
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+    [self handleCarPlayLocationAuthorizationStatus:manager.authorizationStatus];
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+    didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
+    (void)manager;
+    [self handleCarPlayLocationAuthorizationStatus:status];
 }
 
 - (BOOL)application:(UIApplication *)app
@@ -4074,7 +4150,11 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     __weak UISwitch *weakLocationSwitch = locationSwitch;
     [locationSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
-        [settingsDefaults setBool:weakLocationSwitch.isOn forKey:@"iPlayLocationReport"];
+        BOOL enabled = weakLocationSwitch.isOn;
+        [settingsDefaults setBool:enabled forKey:@"iPlayLocationReport"];
+        if (enabled && ![self requestCarPlayLocationPermissionIfNeeded]) {
+            weakLocationSwitch.on = NO;
+        }
     }] forControlEvents:UIControlEventValueChanged];
     [locationRow addArrangedSubview:locationSwitch];
     [locationStack addArrangedSubview:locationRow];
