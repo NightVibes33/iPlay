@@ -3363,7 +3363,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
         restoreBaseline();
-        [weakSettings dismissViewControllerAnimated:YES completion:nil];
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            [self renderState];
+        }];
     }] forControlEvents:UIControlEventTouchUpInside];
     [titleRow addArrangedSubview:close];
 
