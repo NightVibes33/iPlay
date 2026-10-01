@@ -148,6 +148,11 @@ static uint16_t g_display_width_physical_mm = 300;
 static uint16_t g_display_height_physical_mm = 180;
 static bool g_right_hand_drive = false;
 static bool g_hevc_enabled = false;
+static uint16_t g_safe_left = 0;
+static uint16_t g_safe_top = 0;
+static uint16_t g_safe_right = 0;
+static uint16_t g_safe_bottom = 0;
+static bool g_safe_draw_outside = true;
 static int g_screen_receive_buffer = 512 * 1024;
 static bool g_baa_broker_mode = false;
 /* Same-device SideStore mode. The source is Apple's wired CarPlay simulator
@@ -218,6 +223,20 @@ static void parse_args(int argc, char *argv[]) {
             g_right_hand_drive = strtol(argv[++i], NULL, 10) != 0;
         } else if (!strcmp(argv[i], "--hevc") && i + 1 < argc) {
             g_hevc_enabled = strtol(argv[++i], NULL, 10) != 0;
+        } else if (!strcmp(argv[i], "--safe-left") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 0 && value <= UINT16_MAX) g_safe_left = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--safe-top") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 0 && value <= UINT16_MAX) g_safe_top = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--safe-right") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 0 && value <= UINT16_MAX) g_safe_right = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--safe-bottom") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 0 && value <= UINT16_MAX) g_safe_bottom = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--safe-draw-outside") && i + 1 < argc) {
+            g_safe_draw_outside = strtol(argv[++i], NULL, 10) != 0;
         } else if (!strcmp(argv[i], "--baa-broker")) {
             g_baa_broker_mode = true;
         } else if (!strcmp(argv[i], "--local-simulator")) {
@@ -1191,6 +1210,37 @@ static void handle_info(int sock, const HTTPReq *r) {
         display[@"features"] = @(0x08);
         display[@"primaryInputDevice"] = @(1);  /* 1=touchscreen */
         display[@"overscanned"] = @NO;
+
+        uint16_t safeLeft =
+            MIN(g_safe_left, g_display_width > 1 ? g_display_width - 1 : 0);
+        uint16_t safeTop =
+            MIN(g_safe_top, g_display_height > 1 ? g_display_height - 1 : 0);
+        uint16_t safeRight = MIN(
+            g_safe_right,
+            g_display_width > safeLeft + 1
+                ? g_display_width - safeLeft - 1 : 0);
+        uint16_t safeBottom = MIN(
+            g_safe_bottom,
+            g_display_height > safeTop + 1
+                ? g_display_height - safeTop - 1 : 0);
+        NSDictionary *safeArea = @{
+            @"widthPixels": @(MAX(1, (int)g_display_width -
+                                     (int)safeLeft - (int)safeRight)),
+            @"heightPixels": @(MAX(1, (int)g_display_height -
+                                      (int)safeTop - (int)safeBottom)),
+            @"originXPixels": @(safeLeft),
+            @"originYPixels": @(safeTop),
+            @"drawUIOutsideSafeArea": @(g_safe_draw_outside)
+        };
+        NSDictionary *viewArea = @{
+            @"widthPixels": @(g_display_width),
+            @"heightPixels": @(g_display_height),
+            @"originXPixels": @0,
+            @"originYPixels": @0,
+            @"safeArea": safeArea
+        };
+        display[@"viewAreas"] = @[viewArea];
+        display[@"initialViewArea"] = @0;
         info[@"displays"] = @[display];
         if (g_hevc_enabled) {
             /* Presence of hevcInfo is the CarPlay/AirPlay capability signal. */
@@ -4530,11 +4580,15 @@ static void handle_rtsp_setup(int sock, const HTTPReq *r) {
              * unknown sender features.
              */
             NSArray *requestedFeatures = reqDict[@"features"];
+            NSMutableArray<NSString *> *enabledFeatures =
+                [NSMutableArray arrayWithObject:@"viewAreas"];
             if ([requestedFeatures isKindOfClass:[NSArray class]] &&
                 [requestedFeatures containsObject:@"mainBuffered"]) {
-                respDict[@"enabledFeatures"] = @[@"mainBuffered"];
+                [enabledFeatures addObject:@"mainBuffered"];
                 printf("[AUDIO] enabled session feature: mainBuffered\n");
             }
+            respDict[@"enabledFeatures"] = enabledFeatures;
+            printf("[DISPLAY] enabled session feature: viewAreas\n");
 
             /* iPhone sent keepAliveLowPower=1 */
             if ([reqDict[@"keepAliveLowPower"] boolValue]) {
