@@ -3393,7 +3393,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         return label;
     };
 
-    [root addArrangedSubview:categoryLabel(@"Connection")];
 
     UIStackView *connectionStack = nil;
     UIView *connection = [self upstreamSettingsCardWithTitle:@"Connection mode" stack:&connectionStack];
@@ -3439,7 +3438,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [connectionStack addArrangedSubview:modeSelector];
     [connectionStack addArrangedSubview:sendTargetButton];
-    [root addArrangedSubview:connection];
 
     UIStackView *autoStack = nil;
     UIView *automatic = [self upstreamSettingsCardWithTitle:@"Startup" stack:&autoStack];
@@ -3488,9 +3486,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [foregroundRow addArrangedSubview:foregroundSwitch];
     [autoStack addArrangedSubview:foregroundRow];
-    [root addArrangedSubview:automatic];
 
-    [root addArrangedSubview:categoryLabel(@"Identity & appearance")];
     UIStackView *identityStack = nil;
     UIView *identityCard =
         [self upstreamSettingsCardWithTitle:@"Receiver identity" stack:&identityStack];
@@ -3658,9 +3654,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [identityStack addArrangedSubview:[self upstreamLabel:
         @"Manufacturer, model, OEM label and the square AirPlay icon are published by the real receiver after Save and reconnect."
         size:14 color:SECONDARY bold:NO]];
-    [root addArrangedSubview:identityCard];
 
-    [root addArrangedSubview:categoryLabel(@"Display & video")];
 
     UIStackView *displayStack = nil;
     UIView *display = [self upstreamSettingsCardWithTitle:@"Active CarPlay display" stack:&displayStack];
@@ -3986,12 +3980,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [drawOutsideRow addArrangedSubview:drawOutsideSwitch];
     [displayStack addArrangedSubview:drawOutsideRow];
 
-    [root addArrangedSubview:display];
 
-    [root addArrangedSubview:categoryLabel(@"Window")];
     UIStackView *windowStack = nil;
     UIView *windowSection =
-        [self upstreamSettingsCardWithTitle:@"Full screen" stack:&windowStack];
+        [self upstreamSettingsCardWithTitle:@"" stack:&windowStack];
     UIStackView *fullRow = [[UIStackView alloc] init];
     fullRow.axis = UILayoutConstraintAxisHorizontal;
     fullRow.alignment = UIStackViewAlignmentCenter;
@@ -4018,9 +4010,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [fullRow addArrangedSubview:fullSwitch];
     [windowStack addArrangedSubview:fullRow];
-    [root addArrangedSubview:windowSection];
 
-    [root addArrangedSubview:categoryLabel(@"Audio")];
     UIStackView *audioStack = nil;
     UIView *audioCard = [self upstreamSettingsCardWithTitle:@"Audio routing" stack:&audioStack];
 
@@ -4052,9 +4042,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [audioFocusRow addArrangedSubview:audioFocusSwitch];
     [audioStack addArrangedSubview:audioFocusRow];
-    [root addArrangedSubview:audioCard];
 
-    [root addArrangedSubview:categoryLabel(@"Location")];
     UIStackView *locationStack = nil;
     UIView *locationCard =
         [self upstreamSettingsCardWithTitle:@"Report location to iPhone" stack:&locationStack];
@@ -4083,9 +4071,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }] forControlEvents:UIControlEventValueChanged];
     [locationRow addArrangedSubview:locationSwitch];
     [locationStack addArrangedSubview:locationRow];
-    [root addArrangedSubview:locationCard];
 
-    [root addArrangedSubview:categoryLabel(@"Diagnostics")];
     UIStackView *diagnosticStack = nil;
     UIView *diagnosticCard =
         [self upstreamSettingsCardWithTitle:@"Receiver logs" stack:&diagnosticStack];
@@ -4101,9 +4087,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         [self exportDiagnostics];
     }] forControlEvents:UIControlEventTouchUpInside];
     [diagnosticStack addArrangedSubview:exportLogs];
-    [root addArrangedSubview:diagnosticCard];
 
-    [root addArrangedSubview:categoryLabel(@"Local connection")];
     UIStackView *localStack = nil;
     UIView *localCard = [self upstreamSettingsCardWithTitle:@"A → A transport" stack:&localStack];
     [localStack addArrangedSubview:[self upstreamLabel:
@@ -4119,12 +4103,10 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         if (url) [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [localStack addArrangedSubview:iosSettings];
-    [root addArrangedSubview:localCard];
 
     UILabel *applyHint = [self upstreamLabel:
         @"Physical size, resolution, frame rate, HEVC, driving side, music buffer, audio routing and A → A location reporting are applied by the real receiver runtime when the CarPlay session reconnects."
         size:15 color:SECONDARY bold:NO];
-    [root addArrangedSubview:applyHint];
 
     UIButton *save = [UIButton buttonWithType:UIButtonTypeCustom];
     [save setTitle:(self.state == StateActive ? @"Save and reconnect" : @"Save") forState:UIControlStateNormal];
@@ -4148,7 +4130,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             }
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [root addArrangedSubview:save];
 
     UIButton *disconnect = [UIButton buttonWithType:UIButtonTypeCustom];
     [disconnect setTitle:@"Disconnect CarPlay" forState:UIControlStateNormal];
@@ -4165,7 +4146,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             [self stopFlow];
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [root addArrangedSubview:disconnect];
 
     UIButton *exitApplication = [UIButton buttonWithType:UIButtonTypeCustom];
     [exitApplication setTitle:@"Exit application" forState:UIControlStateNormal];
@@ -4184,6 +4164,70 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             [self terminateApplicationWhenIdleAttempts:100];
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
+
+    /*
+     * Upstream CarPlayHostActivity order/rhythm, with only iOS-backed
+     * controls retained. LocalDevVPN/RSD is part of Connection rather than
+     * being presented as a fake Android hotspot section.
+     */
+    [root setCustomSpacing:32 afterView:titleRow];
+
+    UILabel *connectionCategory = categoryLabel(@"Connection");
+    [root addArrangedSubview:connectionCategory];
+    [root setCustomSpacing:14 afterView:connectionCategory];
+    [root addArrangedSubview:connection];
+    [root setCustomSpacing:18 afterView:connection];
+    [root addArrangedSubview:localCard];
+    [root setCustomSpacing:36 afterView:localCard];
+
+    UILabel *locationCategory = categoryLabel(@"Location");
+    [root addArrangedSubview:locationCategory];
+    [root setCustomSpacing:12 afterView:locationCategory];
+    [root addArrangedSubview:locationCard];
+    [root setCustomSpacing:36 afterView:locationCard];
+
+    UILabel *startupCategory = categoryLabel(@"Startup");
+    [root addArrangedSubview:startupCategory];
+    [root setCustomSpacing:12 afterView:startupCategory];
+    [root addArrangedSubview:automatic];
+    [root setCustomSpacing:36 afterView:automatic];
+
+    UILabel *identityCategory = categoryLabel(@"Identity & appearance");
+    [root addArrangedSubview:identityCategory];
+    [root setCustomSpacing:12 afterView:identityCategory];
+    [root addArrangedSubview:identityCard];
+    [root setCustomSpacing:40 afterView:identityCard];
+
+    UILabel *displayCategory = categoryLabel(@"Display & video");
+    [root addArrangedSubview:displayCategory];
+    [root setCustomSpacing:14 afterView:displayCategory];
+    [root addArrangedSubview:display];
+    [root setCustomSpacing:40 afterView:display];
+
+    UILabel *windowCategory = categoryLabel(@"Window");
+    [root addArrangedSubview:windowCategory];
+    [root setCustomSpacing:12 afterView:windowCategory];
+    [root addArrangedSubview:windowSection];
+    [root setCustomSpacing:40 afterView:windowSection];
+
+    UILabel *audioCategory = categoryLabel(@"Audio");
+    [root addArrangedSubview:audioCategory];
+    [root setCustomSpacing:12 afterView:audioCategory];
+    [root addArrangedSubview:audioCard];
+    [root setCustomSpacing:40 afterView:audioCard];
+
+    UILabel *diagnosticsCategory = categoryLabel(@"Diagnostics");
+    [root addArrangedSubview:diagnosticsCategory];
+    [root setCustomSpacing:12 afterView:diagnosticsCategory];
+    [root addArrangedSubview:diagnosticCard];
+    [root setCustomSpacing:30 afterView:diagnosticCard];
+
+    [root addArrangedSubview:applyHint];
+    [root setCustomSpacing:46 afterView:applyHint];
+    [root addArrangedSubview:save];
+    [root setCustomSpacing:12 afterView:save];
+    [root addArrangedSubview:disconnect];
+    [root setCustomSpacing:12 afterView:disconnect];
     [root addArrangedSubview:exitApplication];
 
     [self.vc presentViewController:settings animated:YES completion:nil];
