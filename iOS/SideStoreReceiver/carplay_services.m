@@ -145,6 +145,7 @@ static uint16_t g_display_width = 800;
 static uint16_t g_display_height = 480;
 static uint16_t g_display_fps = 60;
 static uint16_t g_display_width_physical_mm = 300;
+static uint16_t g_display_height_physical_mm = 180;
 static bool g_right_hand_drive = false;
 static bool g_hevc_enabled = false;
 static int g_screen_receive_buffer = 512 * 1024;
@@ -189,8 +190,12 @@ static void parse_args(int argc, char *argv[]) {
                 g_screen_receive_buffer = (int)value;
         } else if (!strcmp(argv[i], "--width-physical-mm") && i + 1 < argc) {
             long value = strtol(argv[++i], NULL, 10);
-            if (value >= 100 && value <= 400)
+            if (value >= 1 && value <= 2000)
                 g_display_width_physical_mm = (uint16_t)value;
+        } else if (!strcmp(argv[i], "--height-physical-mm") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 1 && value <= 2000)
+                g_display_height_physical_mm = (uint16_t)value;
         } else if (!strcmp(argv[i], "--right-hand-drive") && i + 1 < argc) {
             g_right_hand_drive = strtol(argv[++i], NULL, 10) != 0;
         } else if (!strcmp(argv[i], "--hevc") && i + 1 < argc) {
@@ -1155,12 +1160,7 @@ static void handle_info(int sock, const HTTPReq *r) {
         display[@"widthPixels"] = @(g_display_width);
         display[@"heightPixels"] = @(g_display_height);
         display[@"widthPhysical"] = @(g_display_width_physical_mm);
-        uint16_t physicalHeight = g_display_width > 0
-            ? (uint16_t)MAX(1.0, llround((double)g_display_width_physical_mm *
-                                        (double)g_display_height /
-                                        (double)g_display_width))
-            : 0;
-        display[@"heightPhysical"] = @(physicalHeight);
+        display[@"heightPhysical"] = @(g_display_height_physical_mm);
         display[@"maxFPS"] = @(g_display_fps);
         /* Advertise only the implemented capacitive touchscreen. Knob and
          * touchpad bits are behavioral contracts, not cosmetic profile data. */
@@ -6212,9 +6212,9 @@ int main(int argc, char *argv[]) {
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
     printf("[SVC] RAOP name: %s\n", g_raop_name);
-    printf("[SVC] Display:   %ux%u @ %u FPS, physical=%umm, RHD=%s, codec=%s\n",
+    printf("[SVC] Display:   %ux%u @ %u FPS, physical=%ux%umm, RHD=%s, codec=%s\n",
            g_display_width, g_display_height, g_display_fps,
-           g_display_width_physical_mm,
+           g_display_width_physical_mm, g_display_height_physical_mm,
            g_right_hand_drive ? "YES" : "NO",
            g_hevc_enabled ? "HEVC" : "H.264");
     printf("[SVC] pi:        %s\n", HK_PI);
