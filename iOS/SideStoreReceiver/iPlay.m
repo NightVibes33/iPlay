@@ -4513,15 +4513,59 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         dispatch_async(dispatch_get_main_queue(), ^{
             [busy dismissViewControllerAnimated:YES completion:^{
                 if (receivers.count == 0) {
-                    [self presentManualRemoteAtoBFrom:hostController
-                               connectAfterSelection:connectAfterSelection];
+                    UIAlertController *sheet =
+                        [UIAlertController alertControllerWithTitle:@"Choose iPhone"
+                            message:@"No other iPlay receiver was discovered. Use this iPhone for A → A or enter another receiver manually."
+                            preferredStyle:UIAlertControllerStyleActionSheet];
+                    [sheet addAction:[UIAlertAction actionWithTitle:
+                        (self.sideStoreMode == 0
+                            ? @"✓  This iPhone · A → A"
+                            : @"This iPhone · A → A")
+                        style:UIAlertActionStyleDefault
+                        handler:^(__unused UIAlertAction *action) {
+                            self.sideStoreMode = 0;
+                            [[NSUserDefaults standardUserDefaults]
+                                setInteger:0 forKey:@"iPlayLastMode"];
+                            [self renderState];
+                            if (connectAfterSelection) [self attemptStart];
+                        }]];
+                    [sheet addAction:[UIAlertAction actionWithTitle:@"Enter address manually…"
+                        style:UIAlertActionStyleDefault
+                        handler:^(__unused UIAlertAction *action) {
+                            [self presentManualRemoteAtoBFrom:hostController
+                                       connectAfterSelection:connectAfterSelection];
+                        }]];
+                    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                        style:UIAlertActionStyleCancel handler:nil]];
+                    if (sheet.popoverPresentationController) {
+                        sheet.popoverPresentationController.sourceView =
+                            hostController.view;
+                        sheet.popoverPresentationController.sourceRect =
+                            CGRectMake(CGRectGetMidX(hostController.view.bounds),
+                                       CGRectGetMidY(hostController.view.bounds), 1, 1);
+                        sheet.popoverPresentationController.permittedArrowDirections = 0;
+                    }
+                    [hostController presentViewController:sheet animated:YES completion:nil];
                     return;
                 }
 
                 UIAlertController *sheet =
                     [UIAlertController alertControllerWithTitle:@"Choose iPhone"
-                        message:@"Select an iPhone running iPlay in Receive mode."
+                        message:@"Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode."
                         preferredStyle:UIAlertControllerStyleActionSheet];
+
+                [sheet addAction:[UIAlertAction actionWithTitle:
+                    (self.sideStoreMode == 0
+                        ? @"✓  This iPhone · A → A"
+                        : @"This iPhone · A → A")
+                    style:UIAlertActionStyleDefault
+                    handler:^(__unused UIAlertAction *action) {
+                        self.sideStoreMode = 0;
+                        [[NSUserDefaults standardUserDefaults]
+                            setInteger:0 forKey:@"iPlayLastMode"];
+                        [self renderState];
+                        if (connectAfterSelection) [self attemptStart];
+                    }]];
 
                 NSDictionary *saved = [self savedRemoteAtoBReceiver];
                 for (NSDictionary *receiver in receivers) {
