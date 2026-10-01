@@ -5079,9 +5079,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     else [self showCars];
 }
 
-- (void)closeTapped { [self stopFlow]; }
-- (void)infoTapped  { [self showAbout]; }
-
 - (void)toggleChrome:(ThreeFingerSwipeDownGestureRecognizer *)gesture {
     if (self.state != StateActive) return;
     if (gesture.state == UIGestureRecognizerStateEnded) {
@@ -6551,48 +6548,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     });
 }
 
-- (void)showAbout {
-    if (iPlayIsStockSideStoreBuild()) {
-        NSString *msg = [NSString stringWithFormat:
-            @"Version %s\nby %s\n\nSideStore build\nA → A: LocalDevVPN + Developer Mode pairing\nA → B: wireless receiver/source modes\n\nDuring CarPlay, swipe down with three fingers to open CarPlay settings.",
-            APP_VERSION, APP_AUTHOR];
-        UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
-            message:msg preferredStyle:UIAlertControllerStyleAlert];
-        [ac addAction:[UIAlertAction actionWithTitle:@"Export Logs (.txt)"
-            style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-                [self exportDiagnostics];
-            }]];
-        [ac addAction:[UIAlertAction actionWithTitle:@"Done"
-            style:UIAlertActionStyleCancel handler:nil]];
-        UIViewController *p = self.vc.presentedViewController ?: self.vc;
-        [p presentViewController:ac animated:YES completion:nil];
-        return;
-    }
-
-    NSString *msg = [NSString stringWithFormat:@"Version %s\nby %s\n\nDuring CarPlay, swipe down with three fingers to open CarPlay settings.\nDiagnostics: %@",
-                     APP_VERSION, APP_AUTHOR,
-                     self.diagnosticsEnabled ? @"On" : @"Off"];
-    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@APP_NAME
-        message:msg preferredStyle:UIAlertControllerStyleAlert];
-    [ac addAction:[UIAlertAction actionWithTitle:(self.diagnosticsEnabled ? @"Disable Diagnostics" : @"Enable Diagnostics")
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            [self applyDiagnosticsEnabled:!self.diagnosticsEnabled];
-        }]];
-    [ac addAction:[UIAlertAction actionWithTitle:@"Send Log"
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            [self exportDiagnostics];
-        }]];
-
-    /* Stock SideStore target intentionally omits unsupported packet-capture actions. */
-    [ac addAction:[UIAlertAction actionWithTitle:@"Clear Logs"
-        style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *a) {
-            [self clearLogsAndDumps];
-        }]];
-    [ac addAction:[UIAlertAction actionWithTitle:@"Done"
-        style:UIAlertActionStyleCancel handler:nil]];
-    UIViewController *p = self.vc.presentedViewController ?: self.vc;
-    [p presentViewController:ac animated:YES completion:nil];
-}
 /* ─── IPC listener ─────────────────────────────────────────── */
 
 - (BOOL)startIPCListener {
