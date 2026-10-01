@@ -3795,7 +3795,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [displayStack addArrangedSubview:physicalHeader];
 
     NSInteger widthPhysical = [settingsDefaults integerForKey:@"iPlayPhysicalWidthMm"];
-    if (widthPhysical < 100 || widthPhysical > 400) widthPhysical = 300;
+    if (widthPhysical < 100 || widthPhysical > 400) widthPhysical = 200;
     widthPhysical = 100 + (NSInteger)llround((widthPhysical - 100) / 50.0) * 50;
     physicalValue.text = [NSString stringWithFormat:@"%ld mm", (long)widthPhysical];
 
@@ -3878,7 +3878,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [displayStack addArrangedSubview:fpsHeader];
 
     NSInteger fpsValue = [settingsDefaults integerForKey:@"iPlayFrameRate"];
-    if (fpsValue < 30 || fpsValue > 60) fpsValue = 30;
+    if (fpsValue < 30 || fpsValue > 60) fpsValue = 60;
     fpsValue = 30 + (NSInteger)llround((fpsValue - 30) / 5.0) * 5;
     fpsValueLabel.text = [NSString stringWithFormat:@"%ld fps", (long)fpsValue];
 
