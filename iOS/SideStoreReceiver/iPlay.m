@@ -3117,28 +3117,39 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)picker:(PHPickerViewController *)picker
 didFinishPicking:(NSArray<PHPickerResult *> *)results {
-    [picker dismissViewControllerAnimated:YES completion:nil];
     PHPickerResult *result = results.firstObject;
-    if (!result) return;
+    if (!result) {
+        [picker dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
     NSItemProvider *provider = result.itemProvider;
-    if (![provider canLoadObjectOfClass:[UIImage class]]) return;
+    if (![provider canLoadObjectOfClass:[UIImage class]]) {
+        [picker dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
 
+    /*
+     * Keep the picker modal until the asynchronous image load and atomic file
+     * write finish. Otherwise the host Settings X/Disconnect rollback can run
+     * first and a late provider callback can overwrite the restored baseline.
+     */
     __weak typeof(self) weakSelf = self;
     [provider loadObjectOfClass:[UIImage class]
               completionHandler:^(id<NSItemProviderReading> object, NSError *error) {
-        if (error || ![object isKindOfClass:[UIImage class]]) return;
-        UIImage *picked = (UIImage *)object;
         dispatch_async(dispatch_get_main_queue(), ^{
             typeof(self) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            UIImage *square = [strongSelf squareAirPlayIconFromImage:picked];
-            NSData *png = square ? UIImagePNGRepresentation(square) : nil;
-            if (!png.length) return;
-            if ([png writeToFile:[strongSelf airPlayCustomIconPath] atomically:YES]) {
-                strongSelf.airPlayIconPreview.image = square;
-                ip_log("[UI] custom AirPlay icon saved (%lu bytes)",
-                       (unsigned long)png.length);
+            if (!error && strongSelf && [object isKindOfClass:[UIImage class]]) {
+                UIImage *picked = (UIImage *)object;
+                UIImage *square = [strongSelf squareAirPlayIconFromImage:picked];
+                NSData *png = square ? UIImagePNGRepresentation(square) : nil;
+                if (png.length &&
+                    [png writeToFile:[strongSelf airPlayCustomIconPath] atomically:YES]) {
+                    strongSelf.airPlayIconPreview.image = square;
+                    ip_log("[UI] custom AirPlay icon saved (%lu bytes)",
+                           (unsigned long)png.length);
+                }
             }
+            [picker dismissViewControllerAnimated:YES completion:nil];
         });
     }];
 }
