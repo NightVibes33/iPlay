@@ -55,6 +55,7 @@ extern NSArray<NSDictionary *> *iPlayDiscoverRemoteCarPlayReceivers(NSTimeInterv
 extern NSString *iPlayDiscoverRemoteCarPlayReceiver(NSTimeInterval timeout);
 extern void iPlayStopRequestedCarPlaySession(void);
 extern int iPlayCarPlayServiceMain(int argc, char *argv[]);
+extern void iPlayCarPlayServiceSetAppSocket(int fd);
 extern volatile int g_iPlayAirPlayServerReady;
 
 
@@ -3046,7 +3047,6 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 /* Networking */
 @property (nonatomic, assign) int listenFd;
 @property (nonatomic, assign) int clientFd;
-@property (nonatomic, assign) int ipcServiceFd;
 @property (nonatomic, assign) uint16_t ipcPort;
 @property (nonatomic, strong) dispatch_queue_t bgQueue;
 @property (nonatomic, strong) dispatch_queue_t videoQueue;
@@ -3202,7 +3202,6 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
     self.state = StateIdle;
     self.listenFd = -1;
     self.clientFd = -1;
-    self.ipcServiceFd = -1;
     self.bgTask = UIBackgroundTaskInvalid;
     self.tcpdumpPid = 0;
     self.tcpdumpMissingPromptShown = NO;
@@ -5664,7 +5663,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }
 
     char nameBuf[64], manufacturerBuf[64], modelBuf[64], oemLabelBuf[64];
-    char appFdBuf[16];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
     char widthPhysicalBuf[16], heightPhysicalBuf[16], rightHandDriveBuf[8], hevcBuf[8];
     char safeLeftBuf[16], safeTopBuf[16], safeRightBuf[16], safeBottomBuf[16],
@@ -5684,7 +5682,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             ? 2 * 1024 * 1024
             : (display.framesPerSecond <= 30 ? 1024 * 1024 : 512 * 1024);
     snprintf(nameBuf, sizeof(nameBuf), "%s", receiverName.UTF8String);
-    snprintf(appFdBuf, sizeof(appFdBuf), "%d", self.ipcServiceFd);
     snprintf(widthBuf, sizeof(widthBuf), "%u", displayWidth);
     snprintf(heightBuf, sizeof(heightBuf), "%u", displayHeight);
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
@@ -5828,7 +5825,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             NSString *manufacturerCopy = [manufacturer copy];
             NSString *modelCopy = [modelName copy];
             NSString *oemLabelCopy = [oemLabel copy];
-            int appFdCopy = self.ipcServiceFd;
             uint16_t widthCopy = displayWidth, heightCopy = displayHeight, fpsCopy = display.framesPerSecond;
             int bufferCopy = screenReceiveBuffer;
             NSInteger widthPhysicalCopy = widthPhysicalMm;
@@ -5841,7 +5837,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 @autoreleasepool {
                     char nameArg[64], manufacturerArg[64], modelArg[64], oemLabelArg[64];
-                    char appFdArg[16];
                     char widthArg[16], heightArg[16], fpsArg[16], bufferArg[16];
                     char widthPhysicalArg[16], heightPhysicalArg[16], rightHandDriveArg[8], hevcArg[8];
                     char safeLeftArg[16], safeTopArg[16], safeRightArg[16],
@@ -5850,7 +5845,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                     snprintf(manufacturerArg, sizeof(manufacturerArg), "%s", manufacturerCopy.UTF8String);
                     snprintf(modelArg, sizeof(modelArg), "%s", modelCopy.UTF8String);
                     snprintf(oemLabelArg, sizeof(oemLabelArg), "%s", oemLabelCopy.UTF8String);
-                    snprintf(appFdArg, sizeof(appFdArg), "%d", appFdCopy);
                     snprintf(widthArg, sizeof(widthArg), "%u", widthCopy);
                     snprintf(heightArg, sizeof(heightArg), "%u", heightCopy);
                     snprintf(fpsArg, sizeof(fpsArg), "%u", fpsCopy);
@@ -5884,7 +5878,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
-                        (char *)"--app-fd", appFdArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -5907,7 +5900,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
                         (char *)"--manufacturer", manufacturerArg,
                         (char *)"--model", modelArg,
                         (char *)"--oem-label", oemLabelArg,
-                        (char *)"--app-fd", appFdArg,
                         (char *)"--width", widthArg,
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
@@ -6025,7 +6017,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [self transitionTo:StateStopping];
     dispatch_async(self.bgQueue, ^{
         if (self.clientFd >= 0) { close(self.clientFd); self.clientFd = -1; }
-        if (self.ipcServiceFd >= 0) { close(self.ipcServiceFd); self.ipcServiceFd = -1; }
         if (self.listenFd >= 0) { close(self.listenFd); self.listenFd = -1; }
         self.ipcPort = 0;
         if (!iPlayIsStockSideStoreBuild()) unlink(SOCK_PATH);
@@ -6867,11 +6858,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             close(self.clientFd);
             self.clientFd = -1;
         }
-        if (self.ipcServiceFd >= 0) {
-            close(self.ipcServiceFd);
-            self.ipcServiceFd = -1;
-        }
-
         int pair[2] = { -1, -1 };
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
             ip_log("IPC socketpair failed errno=%d %s", errno, strerror(errno));
@@ -6882,9 +6868,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         setsockopt(pair[1], SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
 
         self.clientFd = pair[0];
-        self.ipcServiceFd = pair[1];
         self.listenFd = -1;
         self.ipcPort = 0;
+        iPlayCarPlayServiceSetAppSocket(pair[1]); /* transfers service-end ownership */
 
         __sync_add_and_fetch(&g_touch_epoch, 1);
         g_touch_fd = pair[0];
@@ -6894,10 +6880,13 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         int appFd = pair[0];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             [self ipcHandleConnection:appFd];
-            if (self.clientFd == appFd) self.clientFd = -1;
+            BOOL ownsAppFd = (self.clientFd == appFd);
+            if (ownsAppFd) {
+                self.clientFd = -1;
+                close(appFd);
+            }
             g_touch_fd = -1;
             __sync_add_and_fetch(&g_touch_epoch, 1);
-            close(appFd);
             ip_log("in-process IPC disconnected");
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self endAWDLSuppression];
