@@ -2742,6 +2742,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)startRemoteAtoB;
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection;
+- (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
+               connectAfterSelection:(BOOL)connectAfterSelection
+                    allowLocalTarget:(BOOL)allowLocalTarget;
 
 /* Lifecycle */
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
@@ -3392,7 +3395,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         self.sideStoreMode = mode;
         [settingsDefaults setInteger:mode forKey:@"iPlayLastMode"];
         if (mode == 2 && ![settingsDefaults stringForKey:@"iPlayRemoteReceiverHost"].length) {
-            [self chooseRemoteAtoBReceiverFrom:settings connectAfterSelection:NO];
+            [self chooseRemoteAtoBReceiverFrom:settings
+                         connectAfterSelection:NO
+                              allowLocalTarget:NO];
         }
     }] forControlEvents:UIControlEventValueChanged];
     [connectionStack addArrangedSubview:modeSelector];
@@ -4498,6 +4503,14 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
 - (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
                connectAfterSelection:(BOOL)connectAfterSelection {
+    [self chooseRemoteAtoBReceiverFrom:presenter
+                 connectAfterSelection:connectAfterSelection
+                      allowLocalTarget:YES];
+}
+
+- (void)chooseRemoteAtoBReceiverFrom:(UIViewController *)presenter
+               connectAfterSelection:(BOOL)connectAfterSelection
+                    allowLocalTarget:(BOOL)allowLocalTarget {
     UIViewController *hostController = presenter ?: self.vc;
     UIAlertController *busy =
         [UIAlertController alertControllerWithTitle:@"Finding iPlay"
@@ -4510,6 +4523,11 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             iPlayDiscoverRemoteCarPlayReceivers(3.5);
         dispatch_async(dispatch_get_main_queue(), ^{
             [busy dismissViewControllerAnimated:YES completion:^{
+                if (receivers.count == 0 && !allowLocalTarget) {
+                    [self presentManualRemoteAtoBFrom:hostController
+                               connectAfterSelection:connectAfterSelection];
+                    return;
+                }
                 if (receivers.count == 0) {
                     UIAlertController *sheet =
                         [UIAlertController alertControllerWithTitle:@"Choose iPhone"
@@ -4549,21 +4567,25 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
 
                 UIAlertController *sheet =
                     [UIAlertController alertControllerWithTitle:@"Choose iPhone"
-                        message:@"Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode."
+                        message:(allowLocalTarget
+                            ? @"Use this iPhone for A → A, or choose another iPhone running iPlay in Receive mode."
+                            : @"Choose another iPhone running iPlay in Receive mode.")
                         preferredStyle:UIAlertControllerStyleActionSheet];
 
-                [sheet addAction:[UIAlertAction actionWithTitle:
-                    (self.sideStoreMode == 0
-                        ? @"✓  This iPhone · A → A"
-                        : @"This iPhone · A → A")
-                    style:UIAlertActionStyleDefault
-                    handler:^(__unused UIAlertAction *action) {
-                        self.sideStoreMode = 0;
-                        [[NSUserDefaults standardUserDefaults]
-                            setInteger:0 forKey:@"iPlayLastMode"];
-                        [self renderState];
-                        if (connectAfterSelection) [self attemptStart];
-                    }]];
+                if (allowLocalTarget) {
+                    [sheet addAction:[UIAlertAction actionWithTitle:
+                        (self.sideStoreMode == 0
+                            ? @"✓  This iPhone · A → A"
+                            : @"This iPhone · A → A")
+                        style:UIAlertActionStyleDefault
+                        handler:^(__unused UIAlertAction *action) {
+                            self.sideStoreMode = 0;
+                            [[NSUserDefaults standardUserDefaults]
+                                setInteger:0 forKey:@"iPlayLastMode"];
+                            [self renderState];
+                            if (connectAfterSelection) [self attemptStart];
+                        }]];
+                }
 
                 NSDictionary *saved = [self savedRemoteAtoBReceiver];
                 for (NSDictionary *receiver in receivers) {
@@ -4619,7 +4641,9 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         [self startRemoteAtoBReceiver:saved];
         return;
     }
-    [self chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:YES];
+    [self chooseRemoteAtoBReceiverFrom:self.vc
+             connectAfterSelection:YES
+                  allowLocalTarget:NO];
 }
 
 - (void)primaryTapped {
