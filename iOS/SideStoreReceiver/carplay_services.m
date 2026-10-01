@@ -138,6 +138,9 @@ volatile int g_iPlayAirPlayServerReady = 0;
  * Settings → General → CarPlay on the iPhone). Set via --name argv. */
 static char g_instance_name[32] = "RoadLink";
 static char g_raop_name[64]     = DEVICE_ID_RAW "@" "RoadLink";
+static char g_manufacturer[64]  = "DiPlay";
+static char g_model_name[64]    = "DiPlay";
+static char g_oem_label[64]     = "BYD";
 static uint16_t g_display_width = 800;
 static uint16_t g_display_height = 480;
 static uint16_t g_display_fps = 60;
@@ -159,6 +162,15 @@ static void parse_args(int argc, char *argv[]) {
             snprintf(g_raop_name, sizeof(g_raop_name),
                      "%s@%s", DEVICE_ID_RAW, g_instance_name);
             i++;
+        } else if (!strcmp(argv[i], "--manufacturer") && i + 1 < argc) {
+            strncpy(g_manufacturer, argv[++i], sizeof(g_manufacturer) - 1);
+            g_manufacturer[sizeof(g_manufacturer) - 1] = '\0';
+        } else if (!strcmp(argv[i], "--model") && i + 1 < argc) {
+            strncpy(g_model_name, argv[++i], sizeof(g_model_name) - 1);
+            g_model_name[sizeof(g_model_name) - 1] = '\0';
+        } else if (!strcmp(argv[i], "--oem-label") && i + 1 < argc) {
+            strncpy(g_oem_label, argv[++i], sizeof(g_oem_label) - 1);
+            g_oem_label[sizeof(g_oem_label) - 1] = '\0';
         } else if (!strcmp(argv[i], "--width") && i + 1 < argc) {
             long value = strtol(argv[++i], NULL, 10);
             if (value >= 640 && value <= UINT16_MAX)
@@ -985,9 +997,9 @@ static void handle_info(int sock, const HTTPReq *r) {
         info[@"deviceID"] = @DEVICE_ID;
         info[@"macAddress"] = @DEVICE_ID;
         info[@"features"] = @(features);
-        info[@"model"] = @MODEL_NAME;
+        info[@"model"] = [NSString stringWithUTF8String:g_model_name];
         info[@"name"] = [NSString stringWithUTF8String:g_instance_name];
-        info[@"manufacturer"] = @"iPadPlay";
+        info[@"manufacturer"] = [NSString stringWithUTF8String:g_manufacturer];
         info[@"sourceVersion"] = @SOURCE_VERSION;
         info[@"protocolVersion"] = @"1.1";
 
@@ -1055,7 +1067,7 @@ static void handle_info(int sock, const HTTPReq *r) {
         if (oemIcon.length > 0) {
             info[@"oemIcon"] = oemIcon;
             info[@"oemIconLabel"] =
-                [NSString stringWithUTF8String:g_instance_name];
+                [NSString stringWithUTF8String:g_oem_label];
             info[@"oemIconVisible"] = @YES;
         } else {
             printf("[AP] WARN: OEM vehicle icon unavailable\n");
@@ -5819,7 +5831,7 @@ static TXTRecordRef build_airplay_txt(void) {
     TXTRecordSetValue(&txt, "deviceid",    strlen(DEVICE_ID),      DEVICE_ID);
     TXTRecordSetValue(&txt, "features",    strlen(ft),             ft);
     TXTRecordSetValue(&txt, "flags",       strlen("0x4"),          "0x4");
-    TXTRecordSetValue(&txt, "model",       strlen(MODEL_NAME),    MODEL_NAME);
+    TXTRecordSetValue(&txt, "model",       strlen(g_model_name),  g_model_name);
     TXTRecordSetValue(&txt, "protovers",   3,                      "1.1");
     TXTRecordSetValue(&txt, "pi",          strlen(HK_PI),         HK_PI);
     TXTRecordSetValue(&txt, "pk",          strlen(HK_PK),         HK_PK);
@@ -5853,7 +5865,7 @@ static TXTRecordRef build_raop_txt(void) {
     TXTRecordSetValue(&txt, "tp",       3,                      "UDP");
     TXTRecordSetValue(&txt, "vn",       5,                      "65537");
     TXTRecordSetValue(&txt, "vs",       strlen(SOURCE_VERSION), SOURCE_VERSION);
-    TXTRecordSetValue(&txt, "am",       strlen(MODEL_NAME),     MODEL_NAME);
+    TXTRecordSetValue(&txt, "am",       strlen(g_model_name),      g_model_name);
     TXTRecordSetValue(&txt, "sf",       3,                      "0x0");
     TXTRecordSetValue(&txt, "ft",       strlen(ft),             ft);
     TXTRecordSetValue(&txt, "pk",       strlen(HK_PK),          HK_PK);
@@ -6183,7 +6195,7 @@ int main(int argc, char *argv[]) {
     printf("[SVC] Features:  %s\n", current_features());
     printf("[SVC] Local A->A trusted auth profile: %s\n",
            g_local_simulator_mode ? "YES (MFi-SAP bit suppressed)" : "NO");
-    printf("[SVC] Model:     %s\n", MODEL_NAME);
+    printf("[SVC] Identity:  manufacturer=%s model=%s oemLabel=%s\n",\n           g_manufacturer, g_model_name, g_oem_label);
     printf("[SVC] srcvers:   %s\n", SOURCE_VERSION);
     printf("[SVC] HK:        %s\n", g_useHK ? "YES" : "NO");
     printf("[SVC] RAOP name: %s\n", g_raop_name);
