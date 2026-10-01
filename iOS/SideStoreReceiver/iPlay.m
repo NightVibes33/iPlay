@@ -4383,32 +4383,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     }
 }
 
-- (void)showSideStoreModePicker {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"iPlay CarPlay"
-        message:@"For A → A, keep LocalDevVPN enabled. iPlay pairs with this iPhone through Developer Mode and starts CarPlay locally; it does not require a vehicle to appear first in Settings › General › CarPlay."
-        preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"CarPlay on This iPhone (A → A)"
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            self.sideStoreMode = 0;
-            [self attemptStart];
-        }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Receive from Another iPhone (A → B)"
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            self.sideStoreMode = 1;
-            [self attemptStart];
-        }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Connect This iPhone to Another iPlay (A → B)"
-        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            [self startRemoteAtoB];
-        }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    if (sheet.popoverPresentationController) {
-        sheet.popoverPresentationController.sourceView = self.primaryButton;
-        sheet.popoverPresentationController.sourceRect = self.primaryButton.bounds;
-    }
-    [self.vc presentViewController:sheet animated:YES completion:nil];
-}
-
 - (NSDictionary *)savedRemoteAtoBReceiver {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *host = [defaults stringForKey:@"iPlayRemoteReceiverHost"];
