@@ -106,6 +106,26 @@ for key in runtime_keys:
 if "chooseRemoteAtoBReceiverFrom:settings" not in settings_body:
     raise SystemExit("remote receiver port lost its live send-target chooser")
 
+# Lock the remaining upstream interaction types: driving side is a two-choice
+# selector, Safe area uses the full-screen draggable-boundary editor, and
+# active X restores the baseline then starts a fresh handshake.
+if "UISegmentedControl *drivingSide" not in settings_body or "rhdSwitch" in settings_body:
+    raise SystemExit("driving-side control drifted from upstream two-choice selector")
+
+if "IPlaySafeAreaEditorView" not in main:
+    raise SystemExit("upstream visual safe-area editor is missing")
+if "safeSliders" in settings_body or "safeEditorRows" in settings_body:
+    raise SystemExit("obsolete inline safe-area slider substitute returned")
+
+close_match = re.search(
+    r"\[close addAction:.*?BOOL reconnect = \(self\.state == StateActive\);.*?"
+    r"restoreBaseline\(\);.*?restartWhenIdleForMode:mode attemptsRemaining:100",
+    settings_body,
+    flags=re.S,
+)
+if not close_match:
+    raise SystemExit("active settings X no longer rolls back and reconnects like upstream")
+
 # Lock the iOS runtime to DiPlay's upstream display defaults. Missing or
 # invalid stored values must resolve to 60 FPS and a 200 mm reference length.
 if not re.search(
