@@ -2696,6 +2696,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
 @property (nonatomic, strong) ThreeFingerSwipeDownGestureRecognizer *controlsGesture;
 
+/* Upstream DiPlay UIKit surface is implemented in upstream_ui.inc. */
+- (void)buildUpstreamHomeReal;
+- (void)layoutUpstreamHomeReal;
+- (void)showUpstreamSettingsReal;
+
 /* Lifecycle */
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
 
