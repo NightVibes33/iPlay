@@ -80,6 +80,12 @@ jobs:
           # Guard against the old fake/pause overlay returning to the source.
           grep -F "ThreeFingerSwipeDownGestureRecognizer" iOS/SideStoreReceiver/iPlay.m
           grep -F '#include "upstream_ui.inc"' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];' \
+            iOS/SideStoreReceiver/iPlay.m
+          if grep -R -F 'showUpstreamSettingsReal' iOS/SideStoreReceiver; then
+            echo "ERROR: duplicate simplified Settings surface returned"
+            exit 1
+          fi
           grep -F 'setDebugOverlayEnabled:' iOS/SideStoreReceiver/iPlay.m
           grep -F 'debugOverlayTailText' iOS/SideStoreReceiver/iPlay.m
           grep -F 'sizeof(argsTrusted) / sizeof(argsTrusted[0])' iOS/SideStoreReceiver/iPlay.m
