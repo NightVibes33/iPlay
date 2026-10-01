@@ -3134,7 +3134,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         @"iPlayLastMode", @"iPlayAutoConnect", @"iPlayAutoForeground",
         @"iPlayPhysicalWidthMm", @"iPlayDisplayScaleTenths", @"iPlayFrameRate",
         @"iPlayMusicBufferMs", @"iPlayHEVC", @"iPlayRightHandDrive",
-        @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport"
+        @"iPlayFullScreen", @"iPlayAudioFocus", @"iPlayLocationReport",
+        @"iPlayManufacturer", @"iPlayModel"
     ];
     NSMutableDictionary<NSString *, id> *baseline = [NSMutableDictionary dictionary];
     for (NSString *key in trackedKeys) {
@@ -3297,6 +3298,81 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [foregroundRow addArrangedSubview:foregroundSwitch];
     [autoStack addArrangedSubview:foregroundRow];
     [root addArrangedSubview:automatic];
+
+    [root addArrangedSubview:categoryLabel(@"Identity & appearance")];
+    UIStackView *identityStack = nil;
+    UIView *identityCard =
+        [self upstreamSettingsCardWithTitle:@"Receiver identity" stack:&identityStack];
+    identityCard.backgroundColor = PANEL;
+    identityCard.layer.borderColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1].CGColor;
+
+    NSString *savedManufacturer = [settingsDefaults stringForKey:@"iPlayManufacturer"];
+    NSString *savedModel = [settingsDefaults stringForKey:@"iPlayModel"];
+    if (savedManufacturer.length == 0) savedManufacturer = @"DiPlay";
+    if (savedModel.length == 0) savedModel = @"DiPlay";
+
+    [identityStack addArrangedSubview:
+        [self upstreamLabel:@"Manufacturer" size:18 color:SECONDARY bold:NO]];
+    UITextField *manufacturerField = [[UITextField alloc] init];
+    manufacturerField.text = savedManufacturer;
+    manufacturerField.textColor = TEXT;
+    manufacturerField.backgroundColor =
+        [UIColor colorWithRed:28/255.0 green:36/255.0 blue:42/255.0 alpha:1];
+    manufacturerField.layer.cornerRadius = 12;
+    manufacturerField.font = [UIFont systemFontOfSize:17];
+    manufacturerField.autocorrectionType = UITextAutocorrectionTypeNo;
+    manufacturerField.autocapitalizationType = UITextAutocapitalizationTypeWords;
+    manufacturerField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    manufacturerField.leftView =
+        [[UIView alloc] initWithFrame:CGRectMake(0, 0, 14, 1)];
+    manufacturerField.leftViewMode = UITextFieldViewModeAlways;
+    [manufacturerField.heightAnchor constraintEqualToConstant:52].active = YES;
+    __weak UITextField *weakManufacturerField = manufacturerField;
+    [manufacturerField addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSString *value =
+            [weakManufacturerField.text stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (value.length > 0)
+            [settingsDefaults setObject:value forKey:@"iPlayManufacturer"];
+        else
+            [settingsDefaults removeObjectForKey:@"iPlayManufacturer"];
+    }] forControlEvents:UIControlEventEditingChanged];
+    [identityStack addArrangedSubview:manufacturerField];
+
+    [identityStack addArrangedSubview:
+        [self upstreamLabel:@"Model" size:18 color:SECONDARY bold:NO]];
+    UITextField *modelField = [[UITextField alloc] init];
+    modelField.text = savedModel;
+    modelField.textColor = TEXT;
+    modelField.backgroundColor =
+        [UIColor colorWithRed:28/255.0 green:36/255.0 blue:42/255.0 alpha:1];
+    modelField.layer.cornerRadius = 12;
+    modelField.font = [UIFont systemFontOfSize:17];
+    modelField.autocorrectionType = UITextAutocorrectionTypeNo;
+    modelField.autocapitalizationType = UITextAutocapitalizationTypeWords;
+    modelField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    modelField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 14, 1)];
+    modelField.leftViewMode = UITextFieldViewModeAlways;
+    [modelField.heightAnchor constraintEqualToConstant:52].active = YES;
+    __weak UITextField *weakModelField = modelField;
+    [modelField addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSString *value =
+            [weakModelField.text stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (value.length > 0)
+            [settingsDefaults setObject:value forKey:@"iPlayModel"];
+        else
+            [settingsDefaults removeObjectForKey:@"iPlayModel"];
+    }] forControlEvents:UIControlEventEditingChanged];
+    [identityStack addArrangedSubview:modelField];
+
+    [identityStack addArrangedSubview:[self upstreamLabel:
+        @"Manufacturer and model are published in AirPlay /info and DNS-SD after Save and reconnect."
+        size:14 color:SECONDARY bold:NO]];
+    [root addArrangedSubview:identityCard];
 
     [root addArrangedSubview:categoryLabel(@"Display & video")];
 
