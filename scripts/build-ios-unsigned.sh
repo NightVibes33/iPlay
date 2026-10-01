@@ -152,6 +152,10 @@ if "iPlayCarPlayServiceSetAppSocket(pair[1])" not in main:
     raise SystemExit("SideStore socketpair service end is not transferred to the receiver")
 if "void iPlayCarPlayServiceSetAppSocket(int fd)" not in carplay_services:
     raise SystemExit("receiver cannot accept a fresh in-process IPC channel")
+if "iPlayCarPlayServiceSetAppPort(self.ipcPort)" not in main:
+    raise SystemExit("loopback fallback port is not handed to an already-running receiver")
+if "void iPlayCarPlayServiceSetAppPort(uint16_t port)" not in carplay_services:
+    raise SystemExit("receiver cannot accept a live fallback IPC port")
 if "IPC listening on 127.0.0.1:" in main:
     raise SystemExit("obsolete SideStore loopback listener returned")
 
