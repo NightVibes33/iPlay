@@ -878,6 +878,7 @@
                         value:[defaults boolForKey:@"iPlayLocationReport"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayLocationReport"];
+        if (value) [self requestCarPlayLocationPermissionIfNeeded];
     }];
     [root addArrangedSubview:location];
 
