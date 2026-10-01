@@ -72,6 +72,9 @@ jobs:
           strings "$BIN" | grep -F "CarPlay physical size:"
           strings "$BIN" | grep -F "airplay-icon.png"
           strings "$BIN" | grep -F "LocationInformation"
+          grep -F 'carPlayLocationHasFullAccuracy' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'CLAccuracyAuthorizationFullAccuracy' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'CLAccuracyAuthorizationFullAccuracy' iOS/SideStoreReceiver/local_carkit.m
           strings "$BIN" | grep -F "2a2a2a2a"
           strings "$BIN" | grep -F "Finding iPlay"
           test -s "$APP/ic_carplay.png"
