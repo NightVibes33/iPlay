@@ -1841,9 +1841,13 @@ static OSStatus carplay_aac_input_callback(
 
     NSError *sessionError = nil;
     AVAudioSession *session = [AVAudioSession sharedInstance];
+    BOOL audioFocus = [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayAudioFocus"] == nil
+        ? YES : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAudioFocus"];
+    AVAudioSessionCategoryOptions audioOptions =
+        audioFocus ? 0 : AVAudioSessionCategoryOptionMixWithOthers;
     [session setCategory:AVAudioSessionCategoryPlayback
                     mode:AVAudioSessionModeDefault
-                 options:0 error:&sessionError];
+                 options:audioOptions error:&sessionError];
     if (!sessionError) [session setActive:YES error:&sessionError];
     if (sessionError) {
         ip_log("audio session activation failed: %s",
@@ -1922,6 +1926,14 @@ static OSStatus carplay_aac_input_callback(
     AudioQueueSetParameter(_audioQueue, kAudioQueueParam_Volume, 1.0f);
     _formatMask = formatMask;
     _framesPerPacket = asbd.mFramesPerPacket;
+    if (_streamType == 102) {
+        NSInteger configuredBuffer =
+            [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayMusicBufferMs"];
+        if (configuredBuffer == 300 || configuredBuffer == 500 ||
+            configuredBuffer == 1000) {
+            latencyMs = (uint32_t)configuredBuffer;
+        }
+    }
     _latencyMs = latencyMs;
     _sampleRate = sampleRate;
     _channels = channels;
@@ -2626,7 +2638,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [content addSubview:self.videoView];
     self.vc.videoView = self.videoView;
 
-    [self buildSetupOverlay];
+    [self buildUpstreamHomeReal];
     [self buildChrome];
 
     self.window.rootViewController = self.vc;
@@ -2646,6 +2658,14 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         self.baaError = nil;
         self.sideStoreMode = 0;
         ip_log("[SIDESTORE] Using in-process CarPlay receiver/authentication");
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"]) {
+            ip_log("[SIDESTORE] iPlayAutoConnect scheduled");
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                         (int64_t)(0.65 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (self.state == StateIdle) [self attemptStart];
+            });
+        }
     } else if (![self startBAABroker]) {
         self.baaError = @"The local authentication broker could not start.";
         ip_log("BAA broker failed to start");
@@ -2749,6 +2769,14 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         ip_log("foreground video resync requested");
     }
     if (self.state == StateAwaitingAP) [self pollAP];
+    if (self.state == StateIdle &&
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoForeground"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                     (int64_t)(0.35 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (self.state == StateIdle) [self attemptStart];
+        });
+    }
     [self renderState];
     [self presentPendingBluetoothCompatibilityError];
 }
@@ -2940,7 +2968,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
     [self.setupOverlay addSubview:self.upstreamPreviewLabel];
 
-    [self layoutSetupOverlay];
+    [self layoutUpstreamHomeReal];
 }
 
 - (void)layoutSetupOverlay {
@@ -3281,6 +3309,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     [self.vc presentViewController:settings animated:YES completion:nil];
 }
 
+#include "upstream_ui.inc"
+
 - (void)buildChrome {
     UIView *content = [self rootContentView];
     CGFloat sz = 44;
@@ -3421,7 +3451,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
                 self.secondaryButton.hidden = NO;
                 self.tertiaryButton.hidden = NO;
-                self.receiverButton.hidden = ([self rootContentView].bounds.size.width < 850.0);
+                self.receiverButton.hidden = NO;
                 self.carHintLabel.text = @"A → A uses LocalDevVPN + trusted Remote Pairing.";
                 self.carHintLabel.hidden = NO;
                 break;
@@ -3620,7 +3650,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 - (void)tertiaryTapped {
     if (self.state != StateIdle) return;
-    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];
     else [self showCars];
 }
 
@@ -3936,6 +3966,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
     char nameBuf[64];
     char widthBuf[16], heightBuf[16], fpsBuf[16], receiveBufferBuf[16];
+    char widthPhysicalBuf[16], rightHandDriveBuf[8];
     CarPlayDisplayProfile display = preferred_carplay_display_profile();
     uint16_t displayWidth = display.width;
     uint16_t displayHeight = display.height;
@@ -3956,6 +3987,16 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     snprintf(fpsBuf, sizeof(fpsBuf), "%u", display.framesPerSecond);
     snprintf(receiveBufferBuf, sizeof(receiveBufferBuf), "%d",
              screenReceiveBuffer);
+    NSInteger widthPhysicalMm =
+        [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayPhysicalWidthMm"];
+    if (widthPhysicalMm != 250 && widthPhysicalMm != 300 &&
+        widthPhysicalMm != 350) widthPhysicalMm = 300;
+    BOOL rightHandDrive =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayRightHandDrive"];
+    snprintf(widthPhysicalBuf, sizeof(widthPhysicalBuf), "%ld",
+             (long)widthPhysicalMm);
+    snprintf(rightHandDriveBuf, sizeof(rightHandDriveBuf), "%d",
+             rightHandDrive ? 1 : 0);
     ip_log("display profile: native=%ux%u memory=%lluMB cores=%lu "
            "budget=%llu pixels selected=%ux%u@%u wlan=%s rcvbuf=%d "
            "policy=hardware-only layout=ignored",
@@ -4011,6 +4052,8 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
+                        (char *)"--width-physical-mm", widthPhysicalBuf,
+                        (char *)"--right-hand-drive", rightHandDriveBuf,
                         (char *)"--local-simulator",
                         NULL
                     };
@@ -4021,11 +4064,13 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                         (char *)"--height", heightArg,
                         (char *)"--fps", fpsArg,
                         (char *)"--screen-rcvbuf", bufferArg,
+                        (char *)"--width-physical-mm", widthPhysicalBuf,
+                        (char *)"--right-hand-drive", rightHandDriveBuf,
                         NULL
                     };
                     BOOL trustedAtoA = (self.sideStoreMode == 0);
                     int rc = iPlayCarPlayServiceMain(
-                        trustedAtoA ? 12 : 11,
+                        trustedAtoA ? 16 : 15,
                         trustedAtoA ? argsTrusted : argsNormal);
                     ip_log("[SIDESTORE] in-process receiver exited rc=%d", rc);
                     self.inProcessServiceStarted = NO;
