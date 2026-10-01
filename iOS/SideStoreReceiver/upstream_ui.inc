@@ -497,10 +497,12 @@
     [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"CarPlay on this iPhone (A → A)"
                                                           primary:YES action:^{
         self.sideStoreMode = 0;
+        [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
     }]];
     [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"Receive from another iPhone (A → B)"
                                                           primary:NO action:^{
         self.sideStoreMode = 1;
+        [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"iPlayLastMode"];
     }]];
     [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"Connect this iPhone to another iPlay (A → B)"
                                                           primary:NO action:^{
@@ -752,6 +754,11 @@
                         value:[defaults boolForKey:@"iPlayFullScreen"]
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayFullScreen"];
+        if (self.state == StateActive && [self isPhone]) {
+            self.vc.fullscreenMode = value;
+            [self.vc.view setNeedsLayout];
+            [self.vc.view layoutIfNeeded];
+        }
     }];
     [root addArrangedSubview:display];
 
@@ -768,19 +775,7 @@
                       changed:^(BOOL value) {
         [defaults setBool:value forKey:@"iPlayAudioFocus"];
     }];
-    [self upstreamAddUnavailableToggleTo:audioStack
-                                   title:@"Advanced audio channel mapping"
-                             description:@"Android stream-type routing does not have a direct iOS equivalent. The receiver keeps CarPlay stream types intact and routes them through AVAudioSession."];
     [root addArrangedSubview:audio];
-
-    UIStackView *locationStack = nil;
-    UIView *location = [self upstreamSectionWithTitle:@"Location"
-                                               symbol:@"location"
-                                                stack:&locationStack];
-    [self upstreamAddUnavailableToggleTo:locationStack
-                                   title:@"Report location to iPhone"
-                             description:@"Upstream sends GPS as iAP2 LocationInformation. This remains off until the iOS iAP2 location reporter is wired, rather than exposing a switch that does nothing."];
-    [root addArrangedSubview:location];
 
     UIStackView *permissionsStack = nil;
     UIView *permissions = [self upstreamSectionWithTitle:@"Permissions and connection help"
@@ -825,17 +820,6 @@
         [self showUpstreamAboutPageFrom:weakSettings];
     }]];
     [root addArrangedSubview:about];
-
-    UIStackView *languageStack = nil;
-    UIView *language = [self upstreamSectionWithTitle:@"Language"
-                                               symbol:@"globe"
-                                                stack:&languageStack];
-    UIButton *english = [self upstreamButtonWithTitle:@"App language · English"
-                                              primary:NO action:nil];
-    english.enabled = NO;
-    english.alpha = 0.75;
-    [languageStack addArrangedSubview:english];
-    [root addArrangedSubview:language];
 
     [self.vc presentViewController:settings animated:YES completion:nil];
 }
