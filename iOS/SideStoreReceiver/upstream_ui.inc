@@ -616,29 +616,24 @@
     UIView *display = [self upstreamSectionWithTitle:@"Display and performance"
                                               symbol:@"display"
                                                stack:&displayStack];
-    [self upstreamAddChoiceTo:displayStack
-                        title:@"Physical size basis"
-                      options:@[@"Widest width", @"Longest height"]
-                       values:@[@0, @1]
-                   currentKey:@"iPlayPhysicalSizeBasis"
-                 defaultValue:0];
 
+    /* Match upstream DiPlayActivity.home settings: simple CarPlay-size presets. */
     [self upstreamAddChoiceTo:displayStack
-                        title:@"Physical length"
-                      options:@[@"100 mm", @"150 mm", @"200 mm", @"250 mm", @"300 mm", @"350 mm", @"400 mm"]
-                       values:@[@100, @150, @200, @250, @300, @350, @400]
+                        title:@"CarPlay size"
+                      options:@[@"Large", @"Medium", @"Small"]
+                       values:@[@250, @300, @350]
                    currentKey:@"iPlayPhysicalWidthMm"
-                 defaultValue:200];
+                 defaultValue:300];
     [displayStack addArrangedSubview:[self upstreamLabel:
-        @"Changes the size of CarPlay icons and text by changing the physical display width reported to the iPhone."
+        @"Changes the size of CarPlay icons and text. Applying a size takes effect on the next connection."
                                             size:14
                                            color:[self upstreamMutedColor]
                                             bold:NO]];
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Resolution"
-                      options:@[@"0.3x", @"0.4x", @"0.5x", @"0.6x", @"0.7x", @"0.8x", @"0.9x", @"1.0x"]
-                       values:@[@3, @4, @5, @6, @7, @8, @9, @10]
+                      options:@[@"Native", @"80% · lighter load", @"60% · lightest load"]
+                       values:@[@10, @8, @6]
                    currentKey:@"iPlayDisplayScaleTenths"
                  defaultValue:10];
 
@@ -651,8 +646,8 @@
 
     [self upstreamAddChoiceTo:displayStack
                         title:@"Frame rate"
-                      options:@[@"30 fps", @"35 fps", @"40 fps", @"45 fps", @"50 fps", @"55 fps", @"60 fps"]
-                       values:@[@30, @35, @40, @45, @50, @55, @60]
+                      options:@[@"30 fps · lighter load", @"60 fps · smoother motion"]
+                       values:@[@30, @60]
                    currentKey:@"iPlayFrameRate"
                  defaultValue:60];
 
