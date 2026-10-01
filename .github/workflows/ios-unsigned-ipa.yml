@@ -71,7 +71,7 @@ jobs:
           strings "$BIN" | grep -F "iplay-service-stdio.log"
           strings "$BIN" | grep -F "iplay-localdevvpn.log"
           strings "$BIN" | grep -F "last-start-failure.txt"
-          strings "$BIN" | grep -F "iPlay runtime logs"
+          grep -F '@"iPlay runtime logs\\n"' iOS/SideStoreReceiver/iPlay.m
           strings "$BIN" | grep -F "IPC setup failed:"
           grep -F '@property (nonatomic, copy) NSString *lastIPCError;' \
             iOS/SideStoreReceiver/iPlay.m
