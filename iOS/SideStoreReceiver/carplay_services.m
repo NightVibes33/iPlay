@@ -199,6 +199,8 @@ static bool g_baa_broker_mode = false;
 /* Same-device SideStore mode. The source is Apple's wired CarPlay simulator
  * helper in this process, so advertise HomeKit/CarPlay without MFi-SAP. */
 static bool g_local_simulator_mode = false;
+/* SideStore UI IPC endpoint; parsed before the screen sender starts. */
+static uint16_t g_app_port = 0;
 
 static bool png_pixel_dimensions(NSData *data, uint32_t *outWidth, uint32_t *outHeight) {
     if (!data || data.length < 24 || !outWidth || !outHeight) return false;
@@ -3017,7 +3019,6 @@ static const char *iplay_ipc_socket_path(void) {
 /* STATUS_* codes are forward-declared at the top of the file. */
 
 static int g_app_sock = -1;
-static uint16_t g_app_port = 0;
 static volatile bool g_app_video_enabled = true;
 static volatile uint32_t g_screen_latency_ms = 75;
 
