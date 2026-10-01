@@ -4432,9 +4432,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [content addSubview:self.debugOverlayView];
     [NSLayoutConstraint activateConstraints:@[
         [self.debugOverlayView.leadingAnchor constraintEqualToAnchor:content.safeAreaLayoutGuide.leadingAnchor constant:12],
-        [self.debugOverlayView.trailingAnchor constraintLessThanOrEqualToAnchor:content.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        [self.debugOverlayView.trailingAnchor constraintEqualToAnchor:content.safeAreaLayoutGuide.trailingAnchor constant:-12],
         [self.debugOverlayView.bottomAnchor constraintEqualToAnchor:content.safeAreaLayoutGuide.bottomAnchor constant:-12],
-        [self.debugOverlayView.widthAnchor constraintLessThanOrEqualToConstant:720],
         [self.debugOverlayView.heightAnchor constraintEqualToConstant:190]
     ]];
 }
