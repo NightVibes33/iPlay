@@ -50,6 +50,26 @@ static pthread_mutex_t g_service_log_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool g_service_log_at_line_start = true;
 static FILE *g_service_log_file = NULL;
 
+static const char *iPlayServiceLogPath(void) {
+    static char path[1024] = {0};
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<NSString *> *documents =
+            NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                NSUserDomainMask, YES);
+        NSString *base = documents.firstObject ?: NSTemporaryDirectory();
+        NSString *logs = [base stringByAppendingPathComponent:@"iPlay Logs"];
+        [[NSFileManager defaultManager]
+            createDirectoryAtPath:logs
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:nil];
+        NSString *file = [logs stringByAppendingPathComponent:@"iplay-service.log"];
+        strlcpy(path, file.fileSystemRepresentation, sizeof(path));
+    });
+    return path;
+}
+
 int showcase_service_log_printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -72,7 +92,7 @@ int showcase_service_log_printf(const char *format, ...) {
 
     pthread_mutex_lock(&g_service_log_lock);
     if (!g_service_log_file) {
-        g_service_log_file = fopen("/tmp/iplay-service.log", "a");
+        g_service_log_file = fopen(iPlayServiceLogPath(), "a");
         if (g_service_log_file) setvbuf(g_service_log_file, NULL, _IOLBF, 0);
     }
     const char *cursor = rendered;
@@ -195,6 +215,10 @@ static void parse_args(int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "--oem-label") && i + 1 < argc) {
             strncpy(g_oem_label, argv[++i], sizeof(g_oem_label) - 1);
             g_oem_label[sizeof(g_oem_label) - 1] = '\0';
+        } else if (!strcmp(argv[i], "--app-port") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value > 0 && value <= UINT16_MAX)
+                g_app_port = (uint16_t)value;
         } else if (!strcmp(argv[i], "--width") && i + 1 < argc) {
             long value = strtol(argv[++i], NULL, 10);
             if (value >= 640 && value <= UINT16_MAX)
@@ -2972,6 +2996,7 @@ static const char *iplay_ipc_socket_path(void) {
 /* STATUS_* codes are forward-declared at the top of the file. */
 
 static int g_app_sock = -1;
+static uint16_t g_app_port = 0;
 static volatile bool g_app_video_enabled = true;
 static volatile uint32_t g_screen_latency_ms = 75;
 
@@ -3033,20 +3058,53 @@ static bool app_write_msg_to_socket(int fd, uint8_t type,
 
 static bool app_ensure_connected(void) {
     if (g_app_sock >= 0) return true;
-    g_app_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (g_app_sock < 0) return false;
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, IPADPLAY_SOCK, sizeof(addr.sun_path) - 1);
-    if (connect(g_app_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(g_app_sock);
-        g_app_sock = -1;
-        return false;
+
+    if (g_app_port != 0) {
+        g_app_sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (g_app_sock < 0) {
+            printf("[SCREEN] loopback IPC socket failed: %s\n", strerror(errno));
+            return false;
+        }
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(g_app_port);
+        if (connect(g_app_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            printf("[SCREEN] loopback IPC connect 127.0.0.1:%u failed: %s\n",
+                   g_app_port, strerror(errno));
+            close(g_app_sock);
+            g_app_sock = -1;
+            return false;
+        }
+        printf("[SCREEN] Connected to iPlay app via 127.0.0.1:%u\n", g_app_port);
+    } else {
+        g_app_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (g_app_sock < 0) return false;
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        size_t pathLength = strlen(IPADPLAY_SOCK);
+        if (pathLength >= sizeof(addr.sun_path)) {
+            printf("[SCREEN] Unix IPC path too long (%zu >= %zu): %s\n",
+                   pathLength, sizeof(addr.sun_path), IPADPLAY_SOCK);
+            close(g_app_sock);
+            g_app_sock = -1;
+            return false;
+        }
+        strlcpy(addr.sun_path, IPADPLAY_SOCK, sizeof(addr.sun_path));
+        if (connect(g_app_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            printf("[SCREEN] Unix IPC connect failed path=%s error=%s\n",
+                   IPADPLAY_SOCK, strerror(errno));
+            close(g_app_sock);
+            g_app_sock = -1;
+            return false;
+        }
+        printf("[SCREEN] Connected to iPlay app via unix:%s\n", IPADPLAY_SOCK);
     }
+
     int yes = 1;
     setsockopt(g_app_sock, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));
-    printf("[SCREEN] Connected to iPadPlay app via %s\n", IPADPLAY_SOCK);
     fflush(stdout);
 
     /* Start touch reader on this socket (reads touch events from app) */
