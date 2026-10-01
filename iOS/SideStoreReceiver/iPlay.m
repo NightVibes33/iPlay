@@ -1014,7 +1014,11 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
     NSUInteger processors = process.activeProcessorCount;
     NSInteger screenFPS = [screen respondsToSelector:
         @selector(maximumFramesPerSecond)] ? screen.maximumFramesPerSecond : 60;
-    uint16_t framesPerSecond = (uint16_t)MAX(30, MIN(screenFPS, 60));
+    NSInteger requestedFPS = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
+    if (requestedFPS != 30 && requestedFPS != 60 && requestedFPS != 120)
+        requestedFPS = MIN(screenFPS, 60);
+    uint16_t framesPerSecond =
+        (uint16_t)MAX(30, MIN(requestedFPS, MAX(60, screenFPS)));
     CarPlayWLANAttachment wlanAttachment = wlan_attachment_class();
     if (wlanAttachment == CarPlayWLANAttachmentHSIC)
         framesPerSecond = MIN(framesPerSecond, 30);
@@ -1031,6 +1035,12 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
         pixelBudget = 1600ULL * 900ULL;
     if (memory >= 4ULL * 1024ULL * 1024ULL * 1024ULL && processors >= 6)
         pixelBudget = 1920ULL * 1080ULL;
+    NSInteger scaleTenths = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayDisplayScaleTenths"];
+    if (scaleTenths != 8 && scaleTenths != 6) scaleTenths = 10;
+    if (scaleTenths != 10) {
+        double scale = scaleTenths / 10.0;
+        pixelBudget = (uint64_t)((double)pixelBudget * scale * scale);
+    }
     uint64_t nativePixels = (uint64_t)nativeLong * (uint64_t)nativeShort;
     if (nativePixels > 0 && pixelBudget > nativePixels)
         pixelBudget = nativePixels;
@@ -2485,6 +2495,18 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) UIButton *secondaryButton;   /* My Cars / Cancel */
 @property (nonatomic, strong) UIButton *tertiaryButton;    /* Wi-Fi (idle only) */
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+/* Upstream DiPlay home hierarchy, ported from DiPlayActivity.kt. */
+@property (nonatomic, strong) UIButton *receiverButton;    /* upstream USB-column equivalent: A -> B receiver */
+@property (nonatomic, strong) UILabel *upstreamEyebrowLabel;
+@property (nonatomic, strong) UILabel *upstreamHeroTitleLabel;
+@property (nonatomic, strong) UILabel *upstreamHeroBodyLabel;
+@property (nonatomic, strong) UILabel *upstreamWirelessLabel;
+@property (nonatomic, strong) UILabel *upstreamReceiverHintLabel;
+@property (nonatomic, strong) UILabel *upstreamSettingsHintLabel;
+@property (nonatomic, strong) UILabel *upstreamPreviewLabel;
+@property (nonatomic, strong) UIImageView *upstreamHeaderIcon;
+@property (nonatomic, strong) UIImageView *upstreamBrandIcon;
+@property (nonatomic, strong) UIView *upstreamWirelessCard;
 
 /* Floating chrome */
 @property (nonatomic, strong) UIButton *closeButton;       /* top-right, only ACTIVE */
@@ -2750,134 +2772,507 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 /* ─── UI construction ──────────────────────────────────────── */
 
+- (UILabel *)upstreamLabel:(NSString *)text
+                         size:(CGFloat)size
+                        color:(UIColor *)color
+                         bold:(BOOL)bold {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text;
+    label.textColor = color;
+    label.font = [UIFont systemFontOfSize:size
+                                   weight:bold ? UIFontWeightMedium : UIFontWeightRegular];
+    label.numberOfLines = 0;
+    label.textAlignment = NSTextAlignmentLeft;
+    return label;
+}
+
+- (void)styleUpstreamButton:(UIButton *)button primary:(BOOL)primary {
+    UIColor *bg = [UIColor colorWithRed:(primary ? 166.0 : 21.0)/255.0
+                                  green:(primary ? 200.0 : 30.0)/255.0
+                                   blue:(primary ? 255.0 : 44.0)/255.0
+                                  alpha:1.0];
+    UIColor *fg = primary
+        ? [UIColor colorWithRed:12/255.0 green:17/255.0 blue:27/255.0 alpha:1]
+        : [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
+    UIColor *border = primary
+        ? [UIColor colorWithRed:166/255.0 green:200/255.0 blue:255/255.0 alpha:1]
+        : [UIColor colorWithRed:42/255.0 green:56/255.0 blue:75/255.0 alpha:1];
+
+    button.backgroundColor = bg;
+    [button setTitleColor:fg forState:UIControlStateNormal];
+    [button setTitleColor:[fg colorWithAlphaComponent:0.55] forState:UIControlStateHighlighted];
+    button.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+    button.titleLabel.numberOfLines = 1;
+    button.layer.cornerRadius = 20;
+    button.layer.borderWidth = 1;
+    button.layer.borderColor = border.CGColor;
+    button.clipsToBounds = YES;
+}
+
 - (void)buildSetupOverlay {
+    /*
+     * This is a UIKit port of upstream DiPlayActivity.home(), not the old
+     * Showcase setup screen. Keep the hierarchy, palette, typography, card
+     * radius, 1.6:1 wide columns, and 32/24/40 spacing aligned with upstream.
+     */
     UIView *content = [self rootContentView];
+    UIColor *BG = [UIColor colorWithRed:12/255.0 green:17/255.0 blue:27/255.0 alpha:1];
+    UIColor *SURFACE = [UIColor colorWithRed:21/255.0 green:30/255.0 blue:44/255.0 alpha:1];
+    UIColor *BORDER = [UIColor colorWithRed:42/255.0 green:56/255.0 blue:75/255.0 alpha:1];
+    UIColor *ACCENT = [UIColor colorWithRed:166/255.0 green:200/255.0 blue:255/255.0 alpha:1];
+    UIColor *TEXT = [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
+    UIColor *MUTED = [UIColor colorWithRed:168/255.0 green:182/255.0 blue:202/255.0 alpha:1];
+
     self.setupOverlay = [[UIView alloc] initWithFrame:content.bounds];
-    self.setupOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.setupOverlay.backgroundColor = [UIColor blackColor];
+    self.setupOverlay.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.setupOverlay.backgroundColor = BG;
     [content addSubview:self.setupOverlay];
 
-    /* Wordmark */
-    self.titleLabel = [[UILabel alloc] init];
-    self.titleLabel.text = @APP_NAME;
-    self.titleLabel.textAlignment = NSTextAlignmentCenter;
-    self.titleLabel.textColor = [UIColor whiteColor];
-    self.titleLabel.font = [UIFont systemFontOfSize:64 weight:UIFontWeightUltraLight];
+    self.upstreamHeaderIcon = [[UIImageView alloc] initWithImage:
+        [UIImage imageNamed:@"ic_carplay.png"]];
+    self.upstreamHeaderIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [self.setupOverlay addSubview:self.upstreamHeaderIcon];
+
+    self.titleLabel = [self upstreamLabel:@APP_NAME size:26 color:TEXT bold:YES];
     [self.setupOverlay addSubview:self.titleLabel];
 
-    /* Headline (state-dependent) */
-    self.headlineLabel = [[UILabel alloc] init];
-    self.headlineLabel.textAlignment = NSTextAlignmentCenter;
-    self.headlineLabel.textColor = [UIColor whiteColor];
-    self.headlineLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightRegular];
-    [self.setupOverlay addSubview:self.headlineLabel];
+    UIButton *homeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [homeButton setTitle:@"Home" forState:UIControlStateNormal];
+    [self styleUpstreamButton:homeButton primary:NO];
+    [homeButton addTarget:self action:@selector(upstreamHomeTapped)
+         forControlEvents:UIControlEventTouchUpInside];
+    homeButton.tag = 0x4450484d; /* DPHM */
+    [self.setupOverlay addSubview:homeButton];
 
-    /* Subtitle */
-    self.subtitleLabel = [[UILabel alloc] init];
-    self.subtitleLabel.textAlignment = NSTextAlignmentCenter;
-    self.subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-    self.subtitleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
-    self.subtitleLabel.numberOfLines = 3;
-    [self.setupOverlay addSubview:self.subtitleLabel];
+    self.upstreamEyebrowLabel =
+        [self upstreamLabel:@"YOUR IPHONE. YOUR DRIVE." size:12 color:ACCENT bold:YES];
+    self.upstreamEyebrowLabel.accessibilityLabel = @"Your iPhone. Your drive.";
+    [self.setupOverlay addSubview:self.upstreamEyebrowLabel];
 
-    /* Spinner */
-    self.spinner = [[UIActivityIndicatorView alloc]
-        initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
-    self.spinner.hidesWhenStopped = YES;
-    [self.setupOverlay addSubview:self.spinner];
+    self.upstreamHeroTitleLabel =
+        [self upstreamLabel:@"A familiar drive." size:42 color:TEXT bold:YES];
+    [self.setupOverlay addSubview:self.upstreamHeroTitleLabel];
 
-    /* Primary button */
+    self.upstreamHeroBodyLabel =
+        [self upstreamLabel:@"Your maps, music and conversations.\nCarPlay, right here on your iPhone."
+                       size:19 color:MUTED bold:NO];
+    [self.setupOverlay addSubview:self.upstreamHeroBodyLabel];
+
+    self.upstreamWirelessCard = [[UIView alloc] init];
+    self.upstreamWirelessCard.backgroundColor = SURFACE;
+    self.upstreamWirelessCard.layer.cornerRadius = 20;
+    self.upstreamWirelessCard.layer.borderWidth = 1;
+    self.upstreamWirelessCard.layer.borderColor = BORDER.CGColor;
+    [self.setupOverlay addSubview:self.upstreamWirelessCard];
+
+    self.upstreamWirelessLabel =
+        [self upstreamLabel:@"WIRELESS CARPLAY" size:12 color:ACCENT bold:YES];
+    [self.upstreamWirelessCard addSubview:self.upstreamWirelessLabel];
+
+    self.headlineLabel =
+        [self upstreamLabel:@"Ready when you are" size:24 color:TEXT bold:YES];
+    [self.upstreamWirelessCard addSubview:self.headlineLabel];
+
     self.primaryButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.primaryButton.backgroundColor = [UIColor whiteColor];
-    [self.primaryButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-    [self.primaryButton setTitleColor:[UIColor colorWithWhite:0 alpha:0.4] forState:UIControlStateHighlighted];
-    self.primaryButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    [self.primaryButton addTarget:self action:@selector(primaryTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.setupOverlay addSubview:self.primaryButton];
+    [self.primaryButton setTitle:@"Connect phone" forState:UIControlStateNormal];
+    [self styleUpstreamButton:self.primaryButton primary:YES];
+    [self.primaryButton addTarget:self action:@selector(primaryTapped)
+                 forControlEvents:UIControlEventTouchUpInside];
+    [self.upstreamWirelessCard addSubview:self.primaryButton];
 
-    /* Secondary button (Wi-Fi) */
+    self.subtitleLabel =
+        [self upstreamLabel:@"Keep LocalDevVPN enabled. iPlay pairs with this iPhone through Developer Mode."
+                       size:15 color:MUTED bold:NO];
+    [self.upstreamWirelessCard addSubview:self.subtitleLabel];
+
     self.secondaryButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    [self.secondaryButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.7] forState:UIControlStateNormal];
-    [self.secondaryButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.3] forState:UIControlStateHighlighted];
-    self.secondaryButton.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
-    [self.secondaryButton addTarget:self action:@selector(secondaryTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.setupOverlay addSubview:self.secondaryButton];
+    [self.secondaryButton setTitle:@"Choose iPhone" forState:UIControlStateNormal];
+    [self styleUpstreamButton:self.secondaryButton primary:NO];
+    [self.secondaryButton addTarget:self action:@selector(secondaryTapped)
+                   forControlEvents:UIControlEventTouchUpInside];
+    [self.upstreamWirelessCard addSubview:self.secondaryButton];
 
-    /* Tertiary button (My Cars — only shown on idle) */
+    self.carHintLabel =
+        [self upstreamLabel:@"A → A uses LocalDevVPN + trusted Remote Pairing."
+                       size:13 color:MUTED bold:NO];
+    [self.upstreamWirelessCard addSubview:self.carHintLabel];
+
+    self.spinner = [[UIActivityIndicatorView alloc]
+        initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    self.spinner.color = TEXT;
+    self.spinner.hidesWhenStopped = YES;
+    [self.upstreamWirelessCard addSubview:self.spinner];
+
+    self.upstreamBrandIcon = [[UIImageView alloc] initWithImage:
+        [UIImage imageNamed:@"ic_carplay.png"]];
+    self.upstreamBrandIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [self.setupOverlay addSubview:self.upstreamBrandIcon];
+
+    self.receiverButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
+    [self styleUpstreamButton:self.receiverButton primary:NO];
+    [self.receiverButton addTarget:self action:@selector(receiverTapped)
+                  forControlEvents:UIControlEventTouchUpInside];
+    [self.setupOverlay addSubview:self.receiverButton];
+
+    self.upstreamReceiverHintLabel =
+        [self upstreamLabel:@"Use this iPhone as the CarPlay display for another iPhone."
+                       size:14 color:MUTED bold:NO];
+    self.upstreamReceiverHintLabel.textAlignment = NSTextAlignmentCenter;
+    [self.setupOverlay addSubview:self.upstreamReceiverHintLabel];
+
     self.tertiaryButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    [self.tertiaryButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.7] forState:UIControlStateNormal];
-    [self.tertiaryButton setTitleColor:[UIColor colorWithWhite:1 alpha:0.3] forState:UIControlStateHighlighted];
-    self.tertiaryButton.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
-    [self.tertiaryButton addTarget:self action:@selector(tertiaryTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.tertiaryButton setTitle:@"Settings" forState:UIControlStateNormal];
+    [self styleUpstreamButton:self.tertiaryButton primary:NO];
+    [self.tertiaryButton addTarget:self action:@selector(tertiaryTapped)
+                  forControlEvents:UIControlEventTouchUpInside];
     [self.setupOverlay addSubview:self.tertiaryButton];
 
-    /* Hint at very bottom — current car + AP status */
-    self.carHintLabel = [[UILabel alloc] init];
-    self.carHintLabel.textAlignment = NSTextAlignmentCenter;
-    self.carHintLabel.textColor = [UIColor colorWithWhite:1 alpha:0.35];
-    self.carHintLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
-    self.carHintLabel.numberOfLines = 2;
-    [self.setupOverlay addSubview:self.carHintLabel];
+    self.upstreamSettingsHintLabel =
+        [self upstreamLabel:@"Make iPlay feel right for your iPhone."
+                       size:14 color:MUTED bold:NO];
+    self.upstreamSettingsHintLabel.textAlignment = NSTextAlignmentCenter;
+    [self.setupOverlay addSubview:self.upstreamSettingsHintLabel];
+
+    self.upstreamPreviewLabel =
+        [self upstreamLabel:@"PUBLIC PREVIEW · 0.1" size:12 color:MUTED bold:NO];
+    self.upstreamPreviewLabel.textAlignment = NSTextAlignmentCenter;
+    [self.setupOverlay addSubview:self.upstreamPreviewLabel];
 
     [self layoutSetupOverlay];
 }
 
 - (void)layoutSetupOverlay {
     CGSize s = [self rootContentView].bounds.size;
-    CGFloat W = s.width, H = s.height, cx = W / 2.0;
-    BOOL phone = [self isPhone];
+    CGFloat W = s.width, H = s.height;
+    CGFloat side = 32.0;
+    CGFloat gap = 40.0;
+    CGFloat usable = MAX(640.0, W - side * 2.0 - gap);
+    CGFloat leftW = usable * (1.6 / 2.6);
+    CGFloat rightW = usable - leftW;
+    CGFloat leftX = side;
+    CGFloat rightX = leftX + leftW + gap;
 
-    self.titleLabel.font = [UIFont systemFontOfSize:(phone ? 44 : 64) weight:UIFontWeightUltraLight];
-    self.headlineLabel.font = [UIFont systemFontOfSize:(phone ? 20 : 24) weight:UIFontWeightRegular];
-    self.subtitleLabel.font = [UIFont systemFontOfSize:(phone ? 14 : 16) weight:UIFontWeightRegular];
-    self.primaryButton.titleLabel.font = [UIFont systemFontOfSize:(phone ? 16 : 18) weight:UIFontWeightSemibold];
-    self.secondaryButton.titleLabel.font = [UIFont systemFontOfSize:(phone ? 14 : 15) weight:UIFontWeightRegular];
-    self.tertiaryButton.titleLabel.font = [UIFont systemFontOfSize:(phone ? 14 : 15) weight:UIFontWeightRegular];
+    self.upstreamHeaderIcon.frame = CGRectMake(side, 34, 36, 36);
+    self.titleLabel.frame = CGRectMake(side + 48, 24, 260, 56);
 
-    CGFloat titleY = phone ? H * 0.10 : H * 0.20;
-    CGFloat side = phone ? 24 : 40;
-    CGFloat titleH = phone ? 58 : 80;
+    UIView *homeButton = [self.setupOverlay viewWithTag:0x4450484d];
+    homeButton.frame = CGRectMake(W - side - 130, 24, 130, 56);
 
-    CGFloat headlineY = H * 0.42;
-    CGFloat subtitleY = headlineY + 44;
-    CGFloat spinnerY = headlineY - 50;
-    CGFloat primaryY = H * 0.66;
-    CGFloat subtitleH = phone ? 64 : 60;
+    self.upstreamEyebrowLabel.frame = CGRectMake(leftX, 112, leftW, 22);
+    self.upstreamHeroTitleLabel.frame = CGRectMake(leftX, 142, leftW, 58);
+    self.upstreamHeroBodyLabel.frame = CGRectMake(leftX, 202, leftW, 58);
 
-    if (phone) {
-        BOOL loading = (self.state == StatePreparingBT ||
-                        self.state == StatePreparingNet ||
-                        self.state == StateAwaitingPhone);
-        BOOL buttonState = (self.state == StateIdle ||
-                            self.state == StateAwaitingAP);
+    CGFloat cardY = 282;
+    CGFloat cardH = MIN(382.0, MAX(330.0, H - cardY - 32.0));
+    self.upstreamWirelessCard.frame = CGRectMake(leftX, cardY, leftW, cardH);
 
-        if (loading) {
-            spinnerY = H * 0.32;
-            headlineY = spinnerY + 60;
-            subtitleY = headlineY + 42;
-            primaryY = H * 0.72;
-        } else if (buttonState) {
-            headlineY = H * 0.34;
-            subtitleY = headlineY + 42;
-            primaryY = subtitleY + 88;
-        }
+    CGFloat inset = 24;
+    CGFloat cardW = leftW - inset * 2;
+    self.upstreamWirelessLabel.frame = CGRectMake(inset, 22, cardW, 20);
+    self.headlineLabel.frame = CGRectMake(inset, 50, cardW - 50, 38);
+    self.spinner.frame = CGRectMake(leftW - inset - 36, 50, 36, 36);
+    self.primaryButton.frame = CGRectMake(inset, 103, cardW, 68);
+    self.subtitleLabel.frame = CGRectMake(inset, 184, cardW, 55);
+    self.secondaryButton.frame = CGRectMake(inset, 252, cardW, 56);
+    self.carHintLabel.frame = CGRectMake(inset, 318, cardW, MAX(30, cardH - 332));
+
+    CGFloat logo = 96;
+    self.upstreamBrandIcon.frame =
+        CGRectMake(rightX + (rightW - logo)/2.0, 126, logo, logo);
+    self.receiverButton.frame = CGRectMake(rightX, 282, rightW, 68);
+    self.upstreamReceiverHintLabel.frame = CGRectMake(rightX + 8, 360, rightW - 16, 46);
+    self.tertiaryButton.frame = CGRectMake(rightX, 430, rightW, 68);
+    self.upstreamSettingsHintLabel.frame = CGRectMake(rightX + 8, 508, rightW - 16, 42);
+    self.upstreamPreviewLabel.frame = CGRectMake(rightX, 580, rightW, 22);
+
+    /* Small canvases keep the same upstream hierarchy but stack it. */
+    if (W < 850) {
+        CGFloat w = W - side * 2;
+        self.upstreamEyebrowLabel.frame = CGRectMake(side, 104, w, 22);
+        self.upstreamHeroTitleLabel.frame = CGRectMake(side, 134, w, 52);
+        self.upstreamHeroBodyLabel.frame = CGRectMake(side, 188, w, 54);
+        self.upstreamWirelessCard.frame = CGRectMake(side, 260, w, 366);
+        cardW = w - inset * 2;
+        self.upstreamWirelessLabel.frame = CGRectMake(inset, 22, cardW, 20);
+        self.headlineLabel.frame = CGRectMake(inset, 50, cardW - 50, 38);
+        self.spinner.frame = CGRectMake(w - inset - 36, 50, 36, 36);
+        self.primaryButton.frame = CGRectMake(inset, 103, cardW, 62);
+        self.subtitleLabel.frame = CGRectMake(inset, 178, cardW, 48);
+        self.secondaryButton.frame = CGRectMake(inset, 240, cardW, 56);
+        self.carHintLabel.frame = CGRectMake(inset, 307, cardW, 40);
+        self.upstreamBrandIcon.hidden = YES;
+        self.receiverButton.hidden = YES;
+        self.upstreamReceiverHintLabel.hidden = YES;
+        self.tertiaryButton.frame = CGRectMake(side, 646, w, 58);
+        self.upstreamSettingsHintLabel.hidden = YES;
+        self.upstreamPreviewLabel.frame = CGRectMake(side, 714, w, 22);
+    } else {
+        self.upstreamBrandIcon.hidden = NO;
+        self.upstreamReceiverHintLabel.hidden = NO;
+        self.upstreamSettingsHintLabel.hidden = NO;
     }
+}
 
-    self.titleLabel.frame    = CGRectMake(0, titleY, W, titleH);
-    self.headlineLabel.frame = CGRectMake(side, headlineY, W - side * 2, 34);
-    self.subtitleLabel.frame = CGRectMake(side, subtitleY, W - side * 2, subtitleH);
-    self.spinner.frame       = CGRectMake(cx - 18, spinnerY, 36, 36);
+- (void)upstreamHomeTapped {
+    if (self.state == StateIdle) [self renderState];
+}
 
-    CGFloat btnW = phone ? MIN(240, W - 80) : 240;
-    CGFloat btnH = phone ? 46 : 52;
-    self.primaryButton.frame   = CGRectMake(cx - btnW/2, primaryY, btnW, btnH);
-    self.primaryButton.layer.cornerRadius = btnH / 2.0;
+- (void)receiverTapped {
+    if (self.state != StateIdle) return;
+    self.sideStoreMode = 1;
+    [self attemptStart];
+}
 
-    CGFloat gap = phone ? 10 : 18;
-    CGFloat rowH = phone ? 24 : 26;
-    self.secondaryButton.frame = CGRectMake(cx - btnW/2, primaryY + btnH + gap, btnW, rowH);
-    self.tertiaryButton.frame  = CGRectMake(cx - btnW/2, primaryY + btnH + gap + rowH, btnW, rowH);
-    self.carHintLabel.frame    = CGRectMake(20, H - (phone ? 38 : 52), W - 40, 36);
+- (UIView *)upstreamSettingsCardWithTitle:(NSString *)title
+                                    stack:(UIStackView **)outStack {
+    UIColor *SURFACE = [UIColor colorWithRed:21/255.0 green:30/255.0 blue:44/255.0 alpha:1];
+    UIColor *BORDER = [UIColor colorWithRed:42/255.0 green:56/255.0 blue:75/255.0 alpha:1];
+    UIColor *TEXT = [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
+    UIView *card = [[UIView alloc] init];
+    card.backgroundColor = SURFACE;
+    card.layer.cornerRadius = 20;
+    card.layer.borderWidth = 1;
+    card.layer.borderColor = BORDER.CGColor;
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 12;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24],
+        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:22],
+        [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-22]
+    ]];
+    UILabel *heading = [self upstreamLabel:title size:22 color:TEXT bold:YES];
+    [stack addArrangedSubview:heading];
+    if (outStack) *outStack = stack;
+    return card;
+}
+
+- (void)showUpstreamSettings {
+    UIColor *BG = [UIColor colorWithRed:12/255.0 green:17/255.0 blue:27/255.0 alpha:1];
+    UIColor *ACCENT = [UIColor colorWithRed:166/255.0 green:200/255.0 blue:255/255.0 alpha:1];
+    UIColor *TEXT = [UIColor colorWithRed:241/255.0 green:245/255.0 blue:252/255.0 alpha:1];
+    UIColor *MUTED = [UIColor colorWithRed:168/255.0 green:182/255.0 blue:202/255.0 alpha:1];
+
+    UIViewController *settings = [[UIViewController alloc] init];
+    settings.modalPresentationStyle = UIModalPresentationFullScreen;
+    settings.view.backgroundColor = BG;
+
+    UIScrollView *scroll = [[UIScrollView alloc] init];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.alwaysBounceVertical = YES;
+    [settings.view addSubview:scroll];
+
+    UIStackView *root = [[UIStackView alloc] init];
+    root.axis = UILayoutConstraintAxisVertical;
+    root.spacing = 18;
+    root.translatesAutoresizingMaskIntoConstraints = NO;
+    [scroll addSubview:root];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.leadingAnchor constraintEqualToAnchor:settings.view.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:settings.view.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:settings.view.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:settings.view.bottomAnchor],
+        [root.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:32],
+        [root.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-32],
+        [root.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:24],
+        [root.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-32],
+        [root.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-64]
+    ]];
+
+    UIStackView *header = [[UIStackView alloc] init];
+    header.axis = UILayoutConstraintAxisHorizontal;
+    header.alignment = UIStackViewAlignmentCenter;
+    header.spacing = 12;
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"ic_carplay.png"]];
+    icon.contentMode = UIViewContentModeScaleAspectFit;
+    [icon.widthAnchor constraintEqualToConstant:36].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:36].active = YES;
+    [header addArrangedSubview:icon];
+    UILabel *brand = [self upstreamLabel:@APP_NAME size:26 color:TEXT bold:YES];
+    [header addArrangedSubview:brand];
+    UIView *spacer = [[UIView alloc] init];
+    [header addArrangedSubview:spacer];
+    UIButton *back = [UIButton buttonWithType:UIButtonTypeCustom];
+    [back setTitle:@"Back" forState:UIControlStateNormal];
+    [self styleUpstreamButton:back primary:NO];
+    [back.widthAnchor constraintEqualToConstant:130].active = YES;
+    [back.heightAnchor constraintEqualToConstant:56].active = YES;
+    __weak UIViewController *weakSettings = settings;
+    [back addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [weakSettings dismissViewControllerAnimated:YES completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [header addArrangedSubview:back];
+    [root addArrangedSubview:header];
+
+    UILabel *heading = [self upstreamLabel:@"Your drive, your way." size:34 color:TEXT bold:YES];
+    [root addArrangedSubview:heading];
+    UILabel *intro = [self upstreamLabel:
+        @"Changes apply to your next CarPlay connection. A → A remains the default for SideStore."
+        size:17 color:MUTED bold:NO];
+    [root addArrangedSubview:intro];
+
+    UIStackView *connectionStack = nil;
+    UIView *connection = [self upstreamSettingsCardWithTitle:@"Connection setup" stack:&connectionStack];
+    [connectionStack addArrangedSubview:[self upstreamLabel:
+        @"Choose how to connect. The same receiver engine is used for local and two-iPhone modes."
+        size:16 color:MUTED bold:NO]];
+
+    UIButton *local = [UIButton buttonWithType:UIButtonTypeCustom];
+    [local setTitle:@"CarPlay on this iPhone (A → A)" forState:UIControlStateNormal];
+    [self styleUpstreamButton:local primary:YES];
+    [local.heightAnchor constraintEqualToConstant:60].active = YES;
+    [local addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            self.sideStoreMode = 0;
+            [self attemptStart];
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [connectionStack addArrangedSubview:local];
+
+    UIButton *receive = [UIButton buttonWithType:UIButtonTypeCustom];
+    [receive setTitle:@"Receive from another iPhone (A → B)" forState:UIControlStateNormal];
+    [self styleUpstreamButton:receive primary:NO];
+    [receive.heightAnchor constraintEqualToConstant:60].active = YES;
+    [receive addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            self.sideStoreMode = 1;
+            [self attemptStart];
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [connectionStack addArrangedSubview:receive];
+
+    UIButton *peer = [UIButton buttonWithType:UIButtonTypeCustom];
+    [peer setTitle:@"Connect this iPhone to another iPlay (A → B)" forState:UIControlStateNormal];
+    [self styleUpstreamButton:peer primary:NO];
+    [peer.heightAnchor constraintEqualToConstant:60].active = YES;
+    [peer addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [weakSettings dismissViewControllerAnimated:YES completion:^{
+            [self showSideStoreModePicker];
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [connectionStack addArrangedSubview:peer];
+    [root addArrangedSubview:connection];
+
+    UIStackView *autoStack = nil;
+    UIView *automatic = [self upstreamSettingsCardWithTitle:@"Automatic connection" stack:&autoStack];
+    UIStackView *autoRow = [[UIStackView alloc] init];
+    autoRow.axis = UILayoutConstraintAxisHorizontal;
+    autoRow.alignment = UIStackViewAlignmentCenter;
+    autoRow.spacing = 16;
+    UIStackView *autoText = [[UIStackView alloc] init];
+    autoText.axis = UILayoutConstraintAxisVertical;
+    autoText.spacing = 5;
+    [autoText addArrangedSubview:[self upstreamLabel:@"Connect when iPlay opens" size:18 color:TEXT bold:YES]];
+    [autoText addArrangedSubview:[self upstreamLabel:@"Start the last local/receiver mode automatically." size:14 color:MUTED bold:NO]];
+    [autoRow addArrangedSubview:autoText];
+    UISwitch *autoSwitch = [[UISwitch alloc] init];
+    autoSwitch.onTintColor = ACCENT;
+    autoSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayAutoConnect"];
+    [autoSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        UISwitch *sw = (UISwitch *)action.sender;
+        [[NSUserDefaults standardUserDefaults] setBool:sw.isOn forKey:@"iPlayAutoConnect"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [autoRow addArrangedSubview:autoSwitch];
+    [autoStack addArrangedSubview:autoRow];
+    [root addArrangedSubview:automatic];
+
+    UIStackView *displayStack = nil;
+    UIView *display = [self upstreamSettingsCardWithTitle:@"Display and performance" stack:&displayStack];
+
+    [displayStack addArrangedSubview:[self upstreamLabel:@"Resolution" size:18 color:TEXT bold:YES]];
+    UISegmentedControl *resolution = [[UISegmentedControl alloc]
+        initWithItems:@[@"Native", @"80%", @"60%"]];
+    NSInteger scale = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayDisplayScaleTenths"];
+    if (scale != 8 && scale != 6) scale = 10;
+    resolution.selectedSegmentIndex = scale == 10 ? 0 : (scale == 8 ? 1 : 2);
+    resolution.selectedSegmentTintColor = ACCENT;
+    [resolution addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        UISegmentedControl *seg = (UISegmentedControl *)action.sender;
+        NSInteger value = seg.selectedSegmentIndex == 0 ? 10 : (seg.selectedSegmentIndex == 1 ? 8 : 6);
+        [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayDisplayScaleTenths"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:resolution];
+
+    [displayStack addArrangedSubview:[self upstreamLabel:@"Frame rate" size:18 color:TEXT bold:YES]];
+    UISegmentedControl *fps = [[UISegmentedControl alloc] initWithItems:@[@"30", @"60", @"120"]];
+    NSInteger fpsValue = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
+    if (fpsValue != 30 && fpsValue != 60 && fpsValue != 120) fpsValue = 60;
+    fps.selectedSegmentIndex = fpsValue == 30 ? 0 : (fpsValue == 60 ? 1 : 2);
+    fps.selectedSegmentTintColor = ACCENT;
+    [fps addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        UISegmentedControl *seg = (UISegmentedControl *)action.sender;
+        NSInteger value = seg.selectedSegmentIndex == 0 ? 30 : (seg.selectedSegmentIndex == 1 ? 60 : 120);
+        [[NSUserDefaults standardUserDefaults] setInteger:value forKey:@"iPlayFrameRate"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [displayStack addArrangedSubview:fps];
+
+    UIStackView *fullRow = [[UIStackView alloc] init];
+    fullRow.axis = UILayoutConstraintAxisHorizontal;
+    fullRow.alignment = UIStackViewAlignmentCenter;
+    UIStackView *fullText = [[UIStackView alloc] init];
+    fullText.axis = UILayoutConstraintAxisVertical;
+    fullText.spacing = 5;
+    [fullText addArrangedSubview:[self upstreamLabel:@"Full screen" size:18 color:TEXT bold:YES]];
+    [fullText addArrangedSubview:[self upstreamLabel:@"Hide the app chrome while CarPlay is open." size:14 color:MUTED bold:NO]];
+    [fullRow addArrangedSubview:fullText];
+    UISwitch *fullSwitch = [[UISwitch alloc] init];
+    fullSwitch.onTintColor = ACCENT;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayFullScreen"] == nil)
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"iPlayFullScreen"];
+    fullSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayFullScreen"];
+    [fullSwitch addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        UISwitch *sw = (UISwitch *)action.sender;
+        [[NSUserDefaults standardUserDefaults] setBool:sw.isOn forKey:@"iPlayFullScreen"];
+    }] forControlEvents:UIControlEventValueChanged];
+    [fullRow addArrangedSubview:fullSwitch];
+    [displayStack addArrangedSubview:fullRow];
+    [root addArrangedSubview:display];
+
+    UIStackView *locationStack = nil;
+    UIView *location = [self upstreamSettingsCardWithTitle:@"Local connection" stack:&locationStack];
+    [locationStack addArrangedSubview:[self upstreamLabel:
+        @"A → A uses LocalDevVPN and the trusted Remote Pairing/RSD CarKit service on this iPhone."
+        size:15 color:MUTED bold:NO]];
+    UIButton *settingsButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [settingsButton setTitle:@"Open iOS Settings" forState:UIControlStateNormal];
+    [self styleUpstreamButton:settingsButton primary:NO];
+    [settingsButton.heightAnchor constraintEqualToConstant:56].active = YES;
+    [settingsButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+        if (url) [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [locationStack addArrangedSubview:settingsButton];
+    [root addArrangedSubview:location];
+
+    UIStackView *aboutStack = nil;
+    UIView *about = [self upstreamSettingsCardWithTitle:@"About" stack:&aboutStack];
+    [aboutStack addArrangedSubview:[self upstreamLabel:
+        @"iPlay is an iOS/SideStore port built from the DiPlay/xcertplay receiver stack. The interface mirrors upstream DiPlay’s DiAuto-derived visual language."
+        size:15 color:MUTED bold:NO]];
+    UIButton *aboutButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [aboutButton setTitle:@"Technical information" forState:UIControlStateNormal];
+    [self styleUpstreamButton:aboutButton primary:NO];
+    [aboutButton.heightAnchor constraintEqualToConstant:56].active = YES;
+    [aboutButton addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
+        (void)action;
+        [self showAbout];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [aboutStack addArrangedSubview:aboutButton];
+    [root addArrangedSubview:about];
+
+    [self.vc presentViewController:settings animated:YES completion:nil];
 }
 
 - (void)buildChrome {
@@ -2988,7 +3383,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         self.chromeVisible = NO;
         self.controlsOverlay.hidden = YES;
         self.controlsOverlay.alpha = 1;
-        self.infoButton.hidden = NO;
+        self.infoButton.hidden = iPlayIsStockSideStoreBuild();
         self.infoButton.alpha = 1.0;
         self.closeButton.alpha = 1.0;
     }
@@ -2998,6 +3393,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
     self.primaryButton.alpha = 1.0;
     self.secondaryButton.hidden = YES;
     self.tertiaryButton.hidden = YES;
+    self.receiverButton.hidden = YES;
     self.carHintLabel.hidden = YES;
 
     Car *sel = self.cars.selected;
@@ -3011,12 +3407,16 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             if (iPlayIsStockSideStoreBuild()) {
                 /* Stock / SideStore build: no hotspot, jailbreak tooling, or saved-car
                  * setup is required before choosing a mode. */
-                self.headlineLabel.text = @"iPlay";
-                self.subtitleLabel.text = @"Run real CarPlay on this iPhone through LocalDevVPN,\nor use another iPhone as the source or receiver.";
-                [self.primaryButton setTitle:@"Start CarPlay" forState:UIControlStateNormal];
-                self.secondaryButton.hidden = YES;
-                self.tertiaryButton.hidden = YES;
-                self.carHintLabel.text = @"A → A uses LocalDevVPN + Developer Mode pairing.";
+                self.headlineLabel.text = @"Ready when you are";
+                self.subtitleLabel.text = @"Keep LocalDevVPN enabled. First run pairs iPlay with this iPhone through Developer Mode.";
+                [self.primaryButton setTitle:@"Connect phone" forState:UIControlStateNormal];
+                [self.secondaryButton setTitle:@"Choose iPhone" forState:UIControlStateNormal];
+                [self.tertiaryButton setTitle:@"Settings" forState:UIControlStateNormal];
+                [self.receiverButton setTitle:@"Receive from another iPhone" forState:UIControlStateNormal];
+                self.secondaryButton.hidden = NO;
+                self.tertiaryButton.hidden = NO;
+                self.receiverButton.hidden = NO;
+                self.carHintLabel.text = @"A → A uses LocalDevVPN + trusted Remote Pairing.";
                 self.carHintLabel.hidden = NO;
                 break;
             }
@@ -3110,7 +3510,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         case StateActive:
             self.setupOverlay.hidden = YES;
             if ([self isPhone]) {
-                self.vc.fullscreenMode = YES;
+                BOOL fullScreen = [[NSUserDefaults standardUserDefaults] objectForKey:@"iPlayFullScreen"] == nil
+                    ? YES : [[NSUserDefaults standardUserDefaults] boolForKey:@"iPlayFullScreen"];
+                self.vc.fullscreenMode = fullScreen;
                 [self.vc.view setNeedsLayout];
             }
             self.videoView.transform = CGAffineTransformIdentity;
@@ -3188,9 +3590,11 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 - (void)primaryTapped {
     switch (self.state) {
         case StateIdle:
-            if (iPlayIsStockSideStoreBuild()) [self showSideStoreModePicker];
-            else if ([self.cars apReady]) [self attemptStart];
-            else                     [self showWifiSetup];
+            if (iPlayIsStockSideStoreBuild()) {
+                self.sideStoreMode = 0;
+                [self attemptStart];
+            } else if ([self.cars apReady]) [self attemptStart];
+            else [self showWifiSetup];
             break;
         case StateAwaitingAP:
             [self openHotspotSettings];
@@ -3202,13 +3606,16 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 
 - (void)secondaryTapped {
     if (self.state == StateIdle) {
-        [self showWifiSetup];
+        if (iPlayIsStockSideStoreBuild()) [self showSideStoreModePicker];
+        else [self showWifiSetup];
     } else if (self.state != StateStopping) {
         [self stopFlow];
     }
 }
 - (void)tertiaryTapped {
-    if (self.state == StateIdle) [self showCars];
+    if (self.state != StateIdle) return;
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
+    else [self showCars];
 }
 
 - (void)closeTapped { [self stopFlow]; }
