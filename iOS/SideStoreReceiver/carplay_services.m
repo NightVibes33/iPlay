@@ -1241,50 +1241,56 @@ static void handle_info(int sock, const HTTPReq *r) {
 
         info[@"initialVolume"] = @(-20.0);
 
-        /* HID devices — Apple's single-touch-with-cancel format, used by the
-         * CarPlay Simulator when "High Fidelty" and cancel support are enabled.
-         * Report = 5 bytes: [touch|cancel<<1][xLo][xHi][yLo][yHi].
-         * Coordinates use the negotiated display dimensions. */
+        /*
+         * Upstream DiPlay AirPlayHid touchscreen: two logical finger
+         * collections, six bytes per finger:
+         * [contactId][tipSwitch][xLo][xHi][yLo][yHi].
+         */
         {
             const uint8_t hidDesc[] = {
-                0x05, 0x0D,        /* Usage Page (Digitizer) */
-                0x09, 0x04,        /* Usage (Touch Screen) */
-                0xA1, 0x01,        /* Collection (Application) */
-                0x09, 0x22,        /*   Usage (Finger) */
-                0xA1, 0x02,        /*   Collection (Logical) */
-                0x15, 0x00,        /*     Logical Minimum (0) */
-                0x25, 0x01,        /*     Logical Maximum (1) */
-                0x09, 0x33,        /*     Usage (Touch) */
-                0x09, 0x34,        /*     Usage (Untouch/Cancel) */
-                0x75, 0x01,        /*     Report Size (1) */
-                0x95, 0x02,        /*     Report Count (2) */
-                0x81, 0x02,        /*     Input (Data, Variable, Absolute) */
-                0x95, 0x06,        /*     Report Count (6) */
-                0x81, 0x01,        /*     Input (Constant) */
-                0x05, 0x01,        /*     Usage Page (Generic Desktop) */
+                0x05, 0x0D, 0x09, 0x04, 0xA1, 0x01,
+
+                /* Finger slot 0 */
+                0x05, 0x0D, 0x09, 0x22, 0xA1, 0x02,
+                0x09, 0x38, 0x75, 0x08, 0x95, 0x01, 0x81, 0x02,
+                0x15, 0x00, 0x25, 0x01, 0x09, 0x33,
+                0x75, 0x01, 0x95, 0x01, 0x81, 0x02,
+                0x95, 0x07, 0x81, 0x03,
+                0x05, 0x01,
                 0x26, (uint8_t)g_display_width,
                       (uint8_t)(g_display_width >> 8),
-                                      /*     Logical Maximum (display width) */
-                0x09, 0x30,        /*     Usage (X) */
-                0x75, 0x10,        /*     Report Size (16) */
-                0x95, 0x01,        /*     Report Count (1) */
-                0x81, 0x02,        /*     Input (Data, Variable, Absolute) */
+                0x09, 0x30, 0x75, 0x10, 0x95, 0x01, 0x81, 0x02,
                 0x26, (uint8_t)g_display_height,
                       (uint8_t)(g_display_height >> 8),
-                                      /*     Logical Maximum (display height) */
-                0x09, 0x31,        /*     Usage (Y) */
-                0x81, 0x02,        /*     Input (Data, Variable, Absolute) */
-                0xC0,              /*   End Collection */
-                0xC0               /* End Collection */
+                0x09, 0x31, 0x81, 0x02,
+                0xC0,
+
+                /* Finger slot 1 */
+                0x05, 0x0D, 0x09, 0x22, 0xA1, 0x02,
+                0x09, 0x38, 0x75, 0x08, 0x95, 0x01, 0x81, 0x02,
+                0x15, 0x00, 0x25, 0x01, 0x09, 0x33,
+                0x75, 0x01, 0x95, 0x01, 0x81, 0x02,
+                0x95, 0x07, 0x81, 0x03,
+                0x05, 0x01,
+                0x26, (uint8_t)g_display_width,
+                      (uint8_t)(g_display_width >> 8),
+                0x09, 0x30, 0x75, 0x10, 0x95, 0x01, 0x81, 0x02,
+                0x26, (uint8_t)g_display_height,
+                      (uint8_t)(g_display_height >> 8),
+                0x09, 0x31, 0x81, 0x02,
+                0xC0,
+
+                0xC0
             };
-            NSData *descData = [NSData dataWithBytes:hidDesc length:sizeof(hidDesc)];
+            NSData *descData =
+                [NSData dataWithBytes:hidDesc length:sizeof(hidDesc)];
 
             NSDictionary *hidDev = @{
-                @"name": @"Touch Screen",
-                @"uuid": @"1",
+                @"name": @"xcertplay Touchscreen",
+                @"uuid": @"2a2a2a2a",
                 @"displayUUID": @"e0ff8a27-6738-3d56-8a16-cc53ce1299b4",
-                @"hidVendorID": @(0),
-                @"hidProductID": @(0),
+                @"hidVendorID": @(2),
+                @"hidProductID": @(1),
                 @"hidCountryCode": @(0),
                 @"hidDescriptor": descData
             };
@@ -2270,6 +2276,10 @@ static bool  g_timing_thread_running = false;
 static bool  g_event_thread_running = false;
 static int   g_event_client_fd = -1;  /* accepted event connection */
 static volatile uint64_t g_last_touch_nanos = 0;
+/* Upstream AirPlayHid touchscreen has exactly two six-byte contact slots. */
+static bool g_hid_touch_down[2] = { false, false };
+static uint16_t g_hid_touch_x[2] = { 0, 0 };
+static uint16_t g_hid_touch_y[2] = { 0, 0 };
 
 /* Screen stream state */
 static int      g_screen_listen_fd = -1;     /* TCP listen socket for screen data */
@@ -2546,6 +2556,9 @@ static void event_thread_func(void *ctx) {
         fflush(stdout);
 
         g_event_client_fd = client;
+        memset(g_hid_touch_down, 0, sizeof(g_hid_touch_down));
+        memset(g_hid_touch_x, 0, sizeof(g_hid_touch_x));
+        memset(g_hid_touch_y, 0, sizeof(g_hid_touch_y));
 
         /* HID commands are tiny and latency-sensitive. Without TCP_NODELAY,
          * Nagle combines consecutive reports while waiting for the iPhone's
@@ -2618,6 +2631,9 @@ static void event_thread_func(void *ctx) {
         }
         close(client);
         g_event_client_fd = -1;
+        memset(g_hid_touch_down, 0, sizeof(g_hid_touch_down));
+        memset(g_hid_touch_x, 0, sizeof(g_hid_touch_x));
+        memset(g_hid_touch_y, 0, sizeof(g_hid_touch_y));
         printf("[EVENT] Client connection closed\n");
         fflush(stdout);
     }
@@ -3577,7 +3593,7 @@ static void send_hid_report(const uint8_t *report, size_t reportLen) {
     @autoreleasepool {
         NSDictionary *cmd = @{
             @"type": @"hidSendReport",
-            @"uuid": @"1",
+            @"uuid": @"2a2a2a2a",
             @"hidReport": [NSData dataWithBytes:report length:reportLen]
         };
 
@@ -3637,18 +3653,8 @@ static void send_hid_report(const uint8_t *report, size_t reportLen) {
  * for 50 ms. */
 static bool queue_touch_report(uint8_t phase, uint16_t x, uint16_t y,
                                uint8_t contact, uint64_t timestampNs) {
-    if (!g_hid_send_queue) return false;
-    /* Preserve the complete path. CarPlay derives gesture velocity from the
-     * intermediate reports, so replacing moves with the newest point creates
-     * sluggish or intermittently missed swipes even on a healthy transport.
-     *
-     * The event socket is blocking, so when the radio congests, enc_send_frame
-     * stalls and moves pile up behind it. Releasing that backlog delivers a
-     * dozen points to the iPhone within a few milliseconds; CarPlay times
-     * touches on arrival, reads that as an enormous velocity, and flings the
-     * map. Bounding the queue keeps the path intact while the transport is
-     * healthy — the overwhelmingly common case — and sheds interior points only
-     * while it is behind, which is exactly when a stale point is worthless. */
+    if (!g_hid_send_queue || contact >= 2) return false;
+
     bool isMove = (phase == 1);
     if (isMove) {
         uint64_t nowNanos = monotonic_nanos_now();
@@ -3662,29 +3668,42 @@ static bool queue_touch_report(uint8_t phase, uint16_t x, uint16_t y,
             __sync_fetch_and_add(&g_hid_dropped_moves, 1);
             return false;
         }
-        int32_t newPending =
-            __sync_add_and_fetch(&g_hid_pending_moves, 1);
+        int32_t newPending = __sync_add_and_fetch(&g_hid_pending_moves, 1);
         if (newPending == 1)
-            __sync_lock_test_and_set(
-                &g_hid_oldest_pending_nanos, nowNanos);
+            __sync_lock_test_and_set(&g_hid_oldest_pending_nanos, nowNanos);
     }
+
     dispatch_async(g_hid_send_queue, ^{
-        uint8_t report[5] = {
-            phase == 3 ? 2 : (phase == 2 ? 0 : 1),
-            (uint8_t)(x & 0xff),
-            (uint8_t)(x >> 8),
-            (uint8_t)(y & 0xff),
-            (uint8_t)(y >> 8)
-        };
+        /*
+         * Match upstream AirPlayHid.touchReport(): every report carries both
+         * contact slots. Down/move sets tipSwitch; up/cancel clears it while
+         * preserving the final coordinate for that slot.
+         */
+        g_hid_touch_x[contact] = x;
+        g_hid_touch_y[contact] = y;
+        if (phase == 0 || phase == 1)
+            g_hid_touch_down[contact] = true;
+        else if (phase == 2 || phase == 3)
+            g_hid_touch_down[contact] = false;
+
+        uint8_t report[12] = {0};
+        for (uint8_t slot = 0; slot < 2; slot++) {
+            size_t offset = (size_t)slot * 6;
+            report[offset] = slot;
+            report[offset + 1] = g_hid_touch_down[slot] ? 0x01 : 0x00;
+            report[offset + 2] = (uint8_t)(g_hid_touch_x[slot] & 0xff);
+            report[offset + 3] = (uint8_t)(g_hid_touch_x[slot] >> 8);
+            report[offset + 4] = (uint8_t)(g_hid_touch_y[slot] & 0xff);
+            report[offset + 5] = (uint8_t)(g_hid_touch_y[slot] >> 8);
+        }
         send_hid_report(report, sizeof(report));
+
         if (isMove) {
-            int32_t remaining =
-                __sync_sub_and_fetch(&g_hid_pending_moves, 1);
+            int32_t remaining = __sync_sub_and_fetch(&g_hid_pending_moves, 1);
             __sync_lock_test_and_set(
                 &g_hid_oldest_pending_nanos,
                 remaining > 0 ? monotonic_nanos_now() : 0);
         }
-        (void)contact;
         (void)timestampNs;
     });
     return true;
