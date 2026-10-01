@@ -273,7 +273,7 @@
                                      bold:YES];
     [header addArrangedSubview:self.titleLabel];
     [header addArrangedSubview:[[UIView alloc] init]];
-    UIButton *home = [self upstreamButtonWithTitle:@"Home" primary:NO action:^{
+    UIButton *home = [self upstreamButtonWithTitle:@"Car home" primary:NO action:^{
         [self upstreamHomeTapped];
     }];
     home.tag = 0x4450484d;
@@ -323,7 +323,7 @@
                        size:15 color:[self upstreamMutedColor] bold:NO];
     [cardStack addArrangedSubview:self.subtitleLabel];
 
-    self.secondaryButton = [self upstreamButtonWithTitle:@"Connection mode"
+    self.secondaryButton = [self upstreamButtonWithTitle:@"Choose iPhone"
                                                 primary:NO
                                                  action:^{ [self secondaryTapped]; }];
     [self.secondaryButton.heightAnchor constraintEqualToConstant:56].active = YES;
@@ -431,21 +431,36 @@
                                              symbol:@"cable.connector.horizontal"
                                               stack:&chooseStack];
     __weak UIViewController *weakPage = page;
-    [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"CarPlay on this iPhone (A → A)"
-                                                          primary:YES action:^{
+    NSString *(^modeTitle)(NSInteger, NSString *) =
+        ^NSString *(NSInteger mode, NSString *title) {
+            return self.sideStoreMode == mode
+                ? [NSString stringWithFormat:@"✓  %@", title]
+                : title;
+        };
+
+    [chooseStack addArrangedSubview:
+        [self upstreamButtonWithTitle:
+            modeTitle(0, @"CarPlay on this iPhone (A → A)")
+                              primary:(self.sideStoreMode == 0) action:^{
         self.sideStoreMode = 0;
         [[NSUserDefaults standardUserDefaults] setInteger:0 forKey:@"iPlayLastMode"];
     }]];
-    [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"Receive from another iPhone (A → B)"
-                                                          primary:NO action:^{
+
+    [chooseStack addArrangedSubview:
+        [self upstreamButtonWithTitle:
+            modeTitle(1, @"Receive from another iPhone (A → B)")
+                              primary:(self.sideStoreMode == 1) action:^{
         self.sideStoreMode = 1;
         [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"iPlayLastMode"];
     }]];
-    [chooseStack addArrangedSubview:[self upstreamButtonWithTitle:@"Connect this iPhone to another iPlay (A → B)"
-                                                          primary:NO action:^{
-        [weakPage dismissViewControllerAnimated:YES completion:^{
-            [self startRemoteAtoB];
-        }];
+
+    [chooseStack addArrangedSubview:
+        [self upstreamButtonWithTitle:
+            modeTitle(2, @"Connect this iPhone to another iPlay (A → B)")
+                              primary:(self.sideStoreMode == 2) action:^{
+        self.sideStoreMode = 2;
+        [[NSUserDefaults standardUserDefaults] setInteger:2 forKey:@"iPlayLastMode"];
+        [self chooseRemoteAtoBReceiverFrom:weakPage connectAfterSelection:NO];
     }]];
     [root addArrangedSubview:choose];
 
@@ -458,11 +473,14 @@
                                             size:16
                                            color:[self upstreamMutedColor]
                                             bold:NO]];
-    [pairStack addArrangedSubview:[self upstreamButtonWithTitle:@"Choose connection mode"
+    NSString *selectedReceiver =
+        [[NSUserDefaults standardUserDefaults] stringForKey:@"iPlayRemoteReceiverName"];
+    NSString *phoneTitle = selectedReceiver.length
+        ? [NSString stringWithFormat:@"Choose iPhone · %@", selectedReceiver]
+        : @"Choose iPhone";
+    [pairStack addArrangedSubview:[self upstreamButtonWithTitle:phoneTitle
                                                         primary:NO action:^{
-        [weakPage dismissViewControllerAnimated:YES completion:^{
-            [self showSideStoreModePicker];
-        }];
+        [self chooseRemoteAtoBReceiverFrom:weakPage connectAfterSelection:NO];
     }]];
     [pairStack addArrangedSubview:[self upstreamButtonWithTitle:@"Review app permissions"
                                                         primary:NO action:^{
@@ -483,7 +501,8 @@
     [connectStack addArrangedSubview:[self upstreamButtonWithTitle:@"Connect phone"
                                                            primary:YES action:^{
         [weakPage dismissViewControllerAnimated:YES completion:^{
-            [self attemptStart];
+            if (self.sideStoreMode == 2) [self startRemoteAtoB];
+            else [self attemptStart];
         }];
     }]];
     [root addArrangedSubview:connect];
