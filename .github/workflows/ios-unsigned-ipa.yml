@@ -78,6 +78,14 @@ jobs:
           grep -F 'initWithItems:@[@"This iPhone · A → A", @"Receive · A → B", @"Send · A → B"]' \
             iOS/SideStoreReceiver/iPlay.m
           grep -F 'if (mode == 2) [self startRemoteAtoB];' iOS/SideStoreReceiver/iPlay.m
+          grep -F 'iPlayIsStockSideStoreBuild() && self.sideStoreMode == 2' \
+            iOS/SideStoreReceiver/iPlay.m
+          grep -F 'chooseRemoteAtoBReceiverFrom:self.vc connectAfterSelection:NO' \
+            iOS/SideStoreReceiver/iPlay.m
+          grep -F 'iPlayDiscoverRemoteCarPlayReceivers' \
+            iOS/SideStoreReceiver/SideStoreBridge.m
+          grep -F '_iplay-carplay._tcp' \
+            iOS/SideStoreReceiver/SideStoreBridge.m
           if grep -E "ControlsOverlayView|Three-finger tap to return to CarPlay|buildSetupOverlay" \
               iOS/SideStoreReceiver/iPlay.m; then
             echo "ERROR: obsolete fake CarPlay UI/chrome returned"
