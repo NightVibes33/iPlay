@@ -2298,17 +2298,6 @@ static OSStatus carplay_aac_input_callback(
 }
 @end
 
-/* Full-screen pause-menu scrim. It consumes ordinary touches so CarPlay
- * receives no input until another three-finger tap dismisses it. */
-@interface ControlsOverlayView : UIView
-@end
-@implementation ControlsOverlayView
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
-- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
-- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
-- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {}
-@end
-
 /* A bounded, scrollable compatibility report. Bluetooth failures used to
  * return the state machine to Idle with no user-visible explanation; a long
  * raw daemon log also does not belong in a UIAlertController message. */
@@ -2703,16 +2692,9 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 @property (nonatomic, strong) UIImageView *upstreamBrandIcon;
 @property (nonatomic, strong) UIView *upstreamWirelessCard;
 
-/* Floating chrome */
-@property (nonatomic, strong) UIButton *closeButton;       /* top-right, only ACTIVE */
-@property (nonatomic, strong) UIButton *infoButton;        /* top-left, revealed with close during Active */
-@property (nonatomic, strong) ControlsOverlayView *controlsOverlay;
-@property (nonatomic, strong) UILabel *controlsHintLabel;
-
 /* Upstream DiPlay gesture: three-finger swipe down opens the real
  * in-CarPlay settings surface while normal touches continue to CarPlay. */
 @property (nonatomic, strong) ThreeFingerSwipeDownGestureRecognizer *controlsGesture;
-@property (nonatomic, assign) BOOL chromeVisible;
 
 /* Lifecycle */
 @property (nonatomic, assign) UIBackgroundTaskIdentifier bgTask;
@@ -3593,7 +3575,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
             [self.vc.view setNeedsLayout];
         }
         self.videoView.transform = CGAffineTransformIdentity;
-        self.chromeVisible = NO;
     }
     self.spinner.hidden = YES; [self.spinner stopAnimating];
     self.primaryButton.hidden = YES;
@@ -3724,8 +3705,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
                 [self.vc.view setNeedsLayout];
             }
             self.videoView.transform = CGAffineTransformIdentity;
-            self.chromeVisible = NO;
-            break;
+                break;
 
         case StateStopping:
             self.headlineLabel.text = @"Stopping";
@@ -3831,11 +3811,6 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
         ip_log("[UI] upstream three-finger swipe-down opened CarPlay settings");
         [self showUpstreamSettings];
     }
-}
-
-- (void)hideChrome {
-    /* Kept for legacy callers. Upstream no longer uses a fake pause scrim. */
-    self.chromeVisible = NO;
 }
 
 /* ─── Action helpers ───────────────────────────────────────── */
