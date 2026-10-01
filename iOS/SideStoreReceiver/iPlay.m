@@ -3740,7 +3740,7 @@ static UIInterfaceOrientation showcase_preferred_orientation(void) {
 }
 - (void)tertiaryTapped {
     if (self.state != StateIdle) return;
-    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettings];
+    if (iPlayIsStockSideStoreBuild()) [self showUpstreamSettingsReal];
     else [self showCars];
 }
 
