@@ -1105,7 +1105,7 @@ static CarPlayDisplayProfile preferred_carplay_display_profile(void) {
         @selector(maximumFramesPerSecond)] ? screen.maximumFramesPerSecond : 60;
     NSInteger requestedFPS = [[NSUserDefaults standardUserDefaults] integerForKey:@"iPlayFrameRate"];
     if (requestedFPS < 30 || requestedFPS > 60)
-        requestedFPS = 30;
+        requestedFPS = 60;
     requestedFPS = 30 + (NSInteger)llround((requestedFPS - 30) / 5.0) * 5;
     uint16_t framesPerSecond =
         (uint16_t)MAX(30, MIN(requestedFPS, MIN(60, screenFPS)));
@@ -5406,7 +5406,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     NSInteger referencePhysicalMm =
         [runtimeDefaults integerForKey:@"iPlayPhysicalWidthMm"];
     if (referencePhysicalMm < 100 || referencePhysicalMm > 400)
-        referencePhysicalMm = 300;
+        referencePhysicalMm = 200;
     referencePhysicalMm =
         100 + (NSInteger)llround((referencePhysicalMm - 100) / 50.0) * 50;
     referencePhysicalMm = MAX(100, MIN(400, referencePhysicalMm));
