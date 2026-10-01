@@ -201,6 +201,7 @@ static bool g_baa_broker_mode = false;
 static bool g_local_simulator_mode = false;
 /* SideStore UI IPC endpoint; parsed before the screen sender starts. */
 static uint16_t g_app_port = 0;
+static int g_app_fd = -1;
 
 static bool png_pixel_dimensions(NSData *data, uint32_t *outWidth, uint32_t *outHeight) {
     if (!data || data.length < 24 || !outWidth || !outHeight) return false;
@@ -238,6 +239,10 @@ static void parse_args(int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "--oem-label") && i + 1 < argc) {
             strncpy(g_oem_label, argv[++i], sizeof(g_oem_label) - 1);
             g_oem_label[sizeof(g_oem_label) - 1] = '\0';
+        } else if (!strcmp(argv[i], "--app-fd") && i + 1 < argc) {
+            long value = strtol(argv[++i], NULL, 10);
+            if (value >= 0 && value <= INT_MAX)
+                g_app_fd = (int)value;
         } else if (!strcmp(argv[i], "--app-port") && i + 1 < argc) {
             long value = strtol(argv[++i], NULL, 10);
             if (value > 0 && value <= UINT16_MAX)
@@ -3081,7 +3086,12 @@ static bool app_write_msg_to_socket(int fd, uint8_t type,
 static bool app_ensure_connected(void) {
     if (g_app_sock >= 0) return true;
 
-    if (g_app_port != 0) {
+    if (g_app_fd >= 0) {
+        g_app_sock = g_app_fd;
+        g_app_fd = -1;
+        printf("[SCREEN] Connected to iPlay app via in-process socketpair fd=%d\n",
+               g_app_sock);
+    } else if (g_app_port != 0) {
         g_app_sock = socket(AF_INET, SOCK_STREAM, 0);
         if (g_app_sock < 0) {
             printf("[SCREEN] loopback IPC socket failed: %s\n", strerror(errno));
