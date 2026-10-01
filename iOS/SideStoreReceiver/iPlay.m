@@ -3347,19 +3347,26 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         [root.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-96]
     ]];
 
-    UIStackView *titleRow = [[UIStackView alloc] init];
-    titleRow.axis = UILayoutConstraintAxisHorizontal;
-    titleRow.alignment = UIStackViewAlignmentCenter;
-    titleRow.spacing = 12;
-
+    /*
+     * Match upstream CarPlayHostActivity exactly: the dismiss control floats
+     * at panel (16,16), while the content/title keeps the independent 48px
+     * content inset and 56px title-leading inset.
+     */
     UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
-    [close setTitle:@"×" forState:UIControlStateNormal];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    [close setTitle:@"X" forState:UIControlStateNormal];
     [close setTitleColor:TEXT forState:UIControlStateNormal];
-    close.backgroundColor = [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
+    close.backgroundColor =
+        [UIColor colorWithRed:64/255.0 green:74/255.0 blue:80/255.0 alpha:1];
     close.layer.cornerRadius = 14;
-    close.titleLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightRegular];
-    [close.widthAnchor constraintEqualToConstant:48].active = YES;
-    [close.heightAnchor constraintEqualToConstant:48].active = YES;
+    close.titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightRegular];
+    [panel addSubview:close];
+    [NSLayoutConstraint activateConstraints:@[
+        [close.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:16],
+        [close.topAnchor constraintEqualToAnchor:panel.topAnchor constant:16],
+        [close.widthAnchor constraintEqualToConstant:48],
+        [close.heightAnchor constraintEqualToConstant:48]
+    ]];
     __weak UIViewController *weakSettings = settings;
     [close addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
         (void)action;
@@ -3368,9 +3375,15 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
             [self renderState];
         }];
     }] forControlEvents:UIControlEventTouchUpInside];
-    [titleRow addArrangedSubview:close];
 
-    UILabel *menuTitle = [self upstreamLabel:@"CarPlay settings" size:32 color:TEXT bold:YES];
+    UIStackView *titleRow = [[UIStackView alloc] init];
+    titleRow.axis = UILayoutConstraintAxisHorizontal;
+    titleRow.alignment = UIStackViewAlignmentCenter;
+    UIView *titleInset = [[UIView alloc] init];
+    [titleInset.widthAnchor constraintEqualToConstant:56].active = YES;
+    [titleRow addArrangedSubview:titleInset];
+    UILabel *menuTitle =
+        [self upstreamLabel:@"CarPlay settings" size:32 color:TEXT bold:YES];
     [titleRow addArrangedSubview:menuTitle];
     [root addArrangedSubview:titleRow];
 
