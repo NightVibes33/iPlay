@@ -778,11 +778,9 @@
                               primary:NO
                                height:60
                                action:^{
-        [weakSettings dismissViewControllerAnimated:YES completion:^{
-            [self chooseRemoteAtoBReceiverFrom:self.vc
-                         connectAfterSelection:NO
-                              allowLocalTarget:YES];
-        }];
+        [self chooseRemoteAtoBReceiverFrom:weakSettings
+                     connectAfterSelection:NO
+                          allowLocalTarget:YES];
     }];
     automaticTarget.tag = 0x49504348; /* IPCH: live chooser label updates */
     [automaticStack addArrangedSubview:automaticTarget];
