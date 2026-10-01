@@ -103,6 +103,9 @@ for key in runtime_keys:
     if key not in runtime_source:
         raise SystemExit(f"settings key has no runtime consumer outside the UI: {key}")
 
+if "chooseRemoteAtoBReceiverFrom:settings" not in settings_body:
+    raise SystemExit("remote receiver port lost its live send-target chooser")
+
 # Lock the iOS runtime to DiPlay's upstream display defaults. Missing or
 # invalid stored values must resolve to 60 FPS and a 200 mm reference length.
 if not re.search(
