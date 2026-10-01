@@ -90,10 +90,15 @@ runtime_keys = (
     "iPlayRemoteReceiverName", "iPlayRemoteReceiverHost",
     "iPlayRemoteReceiverPort",
 )
+indirect_ui_keys = {
+    # The visible send-target control invokes the receiver picker; the picker
+    # owns the selected endpoint's port and persists it outside this method.
+    "iPlayRemoteReceiverPort",
+}
 for key in runtime_keys:
-    # One occurrence is the trackedKeys rollback snapshot. Require at least one
-    # additional UI read/write so deleting the real control cannot pass CI.
-    if settings_body.count(key) < 2:
+    # One occurrence is the trackedKeys rollback snapshot. Direct controls
+    # must have at least one additional UI read/write.
+    if key not in indirect_ui_keys and settings_body.count(key) < 2:
         raise SystemExit(f"expected real settings control/key is missing from shared surface: {key}")
     if key not in runtime_source:
         raise SystemExit(f"settings key has no runtime consumer outside the UI: {key}")
