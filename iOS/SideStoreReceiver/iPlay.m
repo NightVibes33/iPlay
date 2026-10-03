@@ -3060,11 +3060,7 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
 @property (nonatomic, assign) pid_t carplayServicesPid;
 @property (nonatomic, assign) pid_t baaBrokerPid;
 
-/* bridge100 tcpdump capture */
-@property (nonatomic, assign) pid_t tcpdumpPid;
-@property (nonatomic, copy)   NSString *currentTcpdumpPath;
-@property (nonatomic, strong) NSTimer *tcpdumpStopTimer;
-@property (nonatomic, assign) BOOL tcpdumpMissingPromptShown;
+/* Diagnostics state */
 @property (nonatomic, assign) BOOL diagnosticsEnabled;
 @property (nonatomic, assign) BOOL helpersLoggedThisRun;
 @property (nonatomic, assign) BOOL bluetoothHandedOff;
@@ -3236,8 +3232,6 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
     self.listenFd = -1;
     self.clientFd = -1;
     self.bgTask = UIBackgroundTaskInvalid;
-    self.tcpdumpPid = 0;
-    self.tcpdumpMissingPromptShown = NO;
     _diagnosticsEnabled = (!iPlayIsStockSideStoreBuild())
         ? [[NSUserDefaults standardUserDefaults] boolForKey:DIAGNOSTICS_ENABLED_KEY]
         : NO;
@@ -3413,7 +3407,6 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
     (void)application;
     [[IPlayBackgroundAudioKeeper shared] requestStop];
     [self endAWDLSuppression];
-    [self stopNetworkDumpCaptureWithReason:@"app terminating"];
     kill_pid(self.baaBrokerPid);
     self.baaBrokerPid = 0;
     unlink(BAA_BROKER_PATH);
@@ -4833,11 +4826,8 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     if (s == StateAwaitingPhone && old != StateAwaitingPhone) {
         ip_log("[HANDOFF] Awaiting sender; CarPlay should perform Wi-Fi association through iAP2 handoff");
         if (self.diagnosticsEnabled)
-            ip_log("diagnostics active; tcpdump remains off unless requested manually");
+            ip_log("diagnostics active; packet capture is not started by iPlay");
     } else if ((s == StateStopping || s == StateIdle) && old != s) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self stopNetworkDumpCaptureWithReason:@"flow stopped"];
-        });
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{ [self renderState]; });
@@ -6014,7 +6004,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [[IPlayBackgroundAudioKeeper shared] requestStop];
     if (iPlayIsStockSideStoreBuild()) iPlayStopRequestedCarPlaySession();
     [self endAWDLSuppression];
-    [self stopNetworkDumpCaptureWithReason:@"user cancelled / stopping flow"];
     [self endBackgroundTask];
     [self.apPollTimer invalidate]; self.apPollTimer = nil;
     [self transitionTo:StateStopping];
@@ -6448,30 +6437,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         [[NSUserDefaults standardUserDefaults] synchronize];
     }
     return best;
-}
-
-- (void)stopNetworkDumpCaptureWithReason:(NSString *)reason {
-    [self.tcpdumpStopTimer invalidate]; self.tcpdumpStopTimer = nil;
-    pid_t pid = self.tcpdumpPid;
-    if (pid <= 0) return;
-
-    ip_log("stopping tcpdump pid=%d reason=%s", pid, [reason UTF8String]);
-    kill(pid, SIGINT); /* lets tcpdump flush pcap footer/stats */
-    for (int i = 0; i < 30; i++) {
-        int status = 0;
-        pid_t done = waitpid(pid, &status, WNOHANG);
-        if (done == pid) {
-            ip_log("tcpdump stopped status=%d", status);
-            self.tcpdumpPid = 0;
-            return;
-        }
-        usleep(100000);
-    }
-    kill(pid, SIGTERM);
-    usleep(300000);
-    if (pid_alive(pid)) kill(pid, SIGKILL);
-    int status = 0; waitpid(pid, &status, WNOHANG);
-    self.tcpdumpPid = 0;
 }
 
 - (void)copyPath:(NSString *)src toDiagnosticsDir:(NSString *)dir name:(NSString *)name {
