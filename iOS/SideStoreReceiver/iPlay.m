@@ -3465,48 +3465,6 @@ typedef NS_ENUM(NSInteger, IPlaySafeAreaEdge) {
     button.clipsToBounds = YES;
 }
 
-- (void)performUpstreamHomeAction {
-    UIApplication *app = [UIApplication sharedApplication];
-    SEL suspendSelector = NSSelectorFromString(@"suspend");
-    if ([app respondsToSelector:suspendSelector]) {
-        IMP implementation = [app methodForSelector:suspendSelector];
-        if (implementation) {
-            ((void (*)(id, SEL))implementation)(app, suspendSelector);
-            return;
-        }
-    }
-    exit(0);
-}
-
-- (void)finishUpstreamHomeAfterStop:(NSInteger)attemptsRemaining {
-    if (self.state == StateIdle) {
-        [self performUpstreamHomeAction];
-        return;
-    }
-    if (attemptsRemaining <= 0) {
-        ip_log("[UI] Home teardown timed out; terminating app");
-        exit(0);
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)),
-                   dispatch_get_main_queue(), ^{
-        [self finishUpstreamHomeAfterStop:attemptsRemaining - 1];
-    });
-}
-
-- (void)upstreamHomeTapped {
-    /*
-     * Upstream DiPlay sends the head unit to HOME. On iOS use the existing
-     * suspend selector when available. Never abandon an in-flight receiver:
-     * stop the state machine first, then leave after it reaches Idle.
-     */
-    if (self.state == StateIdle) {
-        [self performUpstreamHomeAction];
-        return;
-    }
-    if (self.state != StateStopping) [self stopFlow];
-    [self finishUpstreamHomeAfterStop:100];
-}
-
 - (void)receiverTapped {
     if (self.state != StateIdle) return;
     self.sideStoreMode = 1;
