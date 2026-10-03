@@ -6519,43 +6519,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     ip_log("[SIDESTORE] packet capture diagnostics disabled in stock build");
 }
 
-- (void)startNetworkDumpCapture {
-    if (!self.diagnosticsEnabled) {
-        ip_log("tcpdump not started; diagnostics disabled");
-        return;
-    }
-    if (self.tcpdumpPid > 0 && pid_alive(self.tcpdumpPid)) return;
-
-    const char *tcpdump = tcpdump_tool_path();
-    if (!tcpdump) {
-        ip_log("tcpdump missing; cannot capture bridge100");
-        [self promptInstallTcpdumpIfNeeded];
-        return;
-    }
-
-    if (!is_ap_up()) {
-        ip_log("tcpdump warning: %s is not up yet; capture may exit", AP_INTERFACE);
-    }
-
-    NSString *stamp = [self timestampStringForFilename];
-    NSString *path = [NSString stringWithFormat:@"%s/iplay_bridge100_%@.pcap", TCPDUMP_DIR, stamp];
-
-    /* First try tcpdump's own 5-minute rotation stop, so the child exits even
-     * if the app crashes. Older builds that dislike -G/-W fall back to an app
-     * timer below. */
-    if (![self spawnTcpdumpAtPath:path useSelfTimeout:NO]) {
-        ip_log("tcpdump timed mode failed; retrying plain mode with app timer");
-        if (![self spawnTcpdumpAtPath:path useSelfTimeout:YES]) {
-            [self promptInstallTcpdumpIfNeeded];
-            return;
-        }
-    }
-
-    [self.tcpdumpStopTimer invalidate];
-    self.tcpdumpStopTimer = [NSTimer scheduledTimerWithTimeInterval:TCPDUMP_MAX_SECONDS
-        target:self selector:@selector(tcpdumpTimedOut) userInfo:nil repeats:NO];
-}
-
 - (void)tcpdumpTimedOut {
     [self stopNetworkDumpCaptureWithReason:@"5 minute limit reached"];
 }
