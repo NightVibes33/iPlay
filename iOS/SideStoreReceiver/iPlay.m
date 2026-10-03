@@ -4452,6 +4452,7 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
         [settingsDefaults setBool:enabled forKey:@"iPlayLocationReport"];
         if (enabled && ![self requestCarPlayLocationPermissionIfNeeded]) {
             weakLocationSwitch.on = NO;
+            [settingsDefaults setBool:NO forKey:@"iPlayLocationReport"];
         }
     }] forControlEvents:UIControlEventValueChanged];
     [locationRow addArrangedSubview:locationSwitch];
