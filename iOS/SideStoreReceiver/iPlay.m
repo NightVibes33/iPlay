@@ -6419,60 +6419,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     });
 }
 
-- (void)applyDiagnosticsEnabled:(BOOL)enabled {
-    if (iPlayIsStockSideStoreBuild()) {
-        _diagnosticsEnabled = NO;
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:DIAGNOSTICS_ENABLED_KEY];
-        [[NSUserDefaults standardUserDefaults] synchronize];
-        ip_log("[SIDESTORE] jailbreak-only diagnostics are unavailable");
-        return;
-    }
-    _diagnosticsEnabled = enabled;
-    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:DIAGNOSTICS_ENABLED_KEY];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    ip_log("diagnostics %s", enabled ? "enabled" : "disabled");
-
-    if (enabled) {
-        enable_btstack_hci_logging();
-        if (self.state == StateAwaitingPhone || self.state == StateActive) {
-            [self presentAlertWithTitle:@"Diagnostics Enabled"
-                                message:@"Diagnostics will apply on next start. Stop and start Showcase again to capture full helper logs."];
-        }
-    } else {
-        [self stopNetworkDumpCaptureWithReason:@"diagnostics disabled"];
-        disable_btstack_hci_logging();
-    }
-}
-
-- (void)clearLogsAndDumps {
-    [self stopNetworkDumpCaptureWithReason:@"clearing logs and dumps"];
-
-    if (g_logfile) {
-        fclose(g_logfile);
-        g_logfile = NULL;
-    }
-
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *paths = @[
-        @LOG_DIR,
-        @TCPDUMP_DIR,
-        @"/var/mobile/Library/Showcase/diagnostics",
-        @"/tmp/hci_dump.pklg",
-        @SHOWCASE_BTSTACK_LOG_PATH
-    ];
-    for (NSString *path in paths) {
-        [fm removeItemAtPath:path error:nil];
-    }
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"latestTcpdumpPath"];
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"hasEverStartedTcpdump"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-
-    ip_log_open();
-    ip_log("logs and dumps cleared");
-    [self presentAlertWithTitle:@"Logs Cleared"
-                        message:@"Showcase logs, diagnostics archives, network dumps, and HCI dumps were removed."];
-}
-
 - (NSString *)timestampStringForFilename {
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"yyyyMMdd-HHmmss";
@@ -6636,27 +6582,6 @@ didFinishPicking:(NSArray<PHPickerResult *> *)results {
     if (pid_alive(pid)) kill(pid, SIGKILL);
     int status = 0; waitpid(pid, &status, WNOHANG);
     self.tcpdumpPid = 0;
-}
-
-- (void)exportNetworkDump {
-    if (self.tcpdumpPid > 0 && pid_alive(self.tcpdumpPid)) {
-        [self stopNetworkDumpCaptureWithReason:@"user requested export"];
-    }
-
-    NSString *dump = [self latestNetworkDumpPath];
-    if (!dump) {
-        if (!tcpdump_tool_path()) {
-            [self promptInstallTcpdumpIfNeeded];
-            return;
-        }
-        [self startNetworkDumpCapture];
-        [self presentAlertWithTitle:@"Network Capture Started"
-                            message:@"Reproduce the issue, then return here and choose Stop & Send Network Dump. Performance tests should leave this capture off."];
-        return;
-    }
-
-    NSURL *url = [NSURL fileURLWithPath:dump];
-    [self presentShareForURL:url];
 }
 
 - (void)copyPath:(NSString *)src toDiagnosticsDir:(NSString *)dir name:(NSString *)name {
