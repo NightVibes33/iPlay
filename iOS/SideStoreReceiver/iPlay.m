@@ -68,7 +68,6 @@ extern volatile int g_iPlayAirPlayServerReady;
 #define APP_LOG     LOG_DIR "/iplay-app.log"
 #define TCPDUMP_DIR  "/tmp"
 #define TCPDUMP_LOG  TCPDUMP_DIR "/iplay-tcpdump.log"
-#define TCPDUMP_MAX_SECONDS 300
 #define DIAGNOSTICS_ENABLED_KEY @"diagnosticsEnabled"
 static FILE *g_logfile = NULL;
 
